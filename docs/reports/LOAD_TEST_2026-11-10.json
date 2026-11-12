@@ -1,0 +1,48 @@
+{
+  "started_at": "2026-11-09T21:15:59.806479+00:00",
+  "duration_seconds": 1800.61,
+  "concurrency": 4,
+  "completed_workflows": 10199,
+  "failed_workflows": 0,
+  "error_counts": {},
+  "requests": 61194,
+  "endpoint_stats": {
+    "approve": {
+      "requests": 10199,
+      "p50_ms": 179.22,
+      "p95_ms": 272.59,
+      "max_ms": 379.91
+    },
+    "health_metrics": {
+      "requests": 10199,
+      "p50_ms": 84.97,
+      "p95_ms": 123.76,
+      "max_ms": 273.01
+    },
+    "import": {
+      "requests": 10199,
+      "p50_ms": 102.27,
+      "p95_ms": 186.54,
+      "max_ms": 296.22
+    },
+    "listings": {
+      "requests": 10199,
+      "p50_ms": 142.03,
+      "p95_ms": 222.71,
+      "max_ms": 408.57
+    },
+    "pending_candidates": {
+      "requests": 10199,
+      "p50_ms": 91.23,
+      "p95_ms": 165.52,
+      "max_ms": 287.16
+    },
+    "price_history": {
+      "requests": 10199,
+      "p50_ms": 80.89,
+      "p95_ms": 165.83,
+      "max_ms": 275.36
+    }
+  },
+  "data_note": "Synthetic fixture values only; source URLs were stored in the isolated DB and never fetched."
+}

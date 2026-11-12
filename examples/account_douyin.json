@@ -1,0 +1,7 @@
+{
+  "platform": "douyin",
+  "account_ref": "https://www.douyin.com/user/REPLACE_WITH_REAL_PROFILE_LINK",
+  "nickname": "示例：宁波房产中介（替换）",
+  "history_mode": "30d",
+  "poll_interval_minutes": 120
+}

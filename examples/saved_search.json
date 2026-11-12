@@ -1,0 +1,9 @@
+{
+  "name": "鄞州400万内140平以上四房",
+  "district": "鄞州",
+  "max_price_wan": 400,
+  "min_area_sqm": 140,
+  "min_bedrooms": 4,
+  "min_drop_pct": 5,
+  "notifications_enabled": true
+}

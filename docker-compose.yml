@@ -1,0 +1,75 @@
+name: ningbo-re-ai
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rehouse}
+      POSTGRES_USER: ${POSTGRES_USER:-rehouse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ./sql/002_collection_pipeline.sql:/docker-entrypoint-initdb.d/002_collection_pipeline.sql:ro
+      - ./sql/003_collection_health_indexes.sql:/docker-entrypoint-initdb.d/003_collection_health_indexes.sql:ro
+      - ./sql/004_collection_health_metrics.sql:/docker-entrypoint-initdb.d/004_collection_health_metrics.sql:ro
+      - ./sql/005_saved_search_filters.sql:/docker-entrypoint-initdb.d/005_saved_search_filters.sql:ro
+      - ./sql/006_collection_discovery_state.sql:/docker-entrypoint-initdb.d/006_collection_discovery_state.sql:ro
+      - ./sql/007_collection_listing_observations.sql:/docker-entrypoint-initdb.d/007_collection_listing_observations.sql:ro
+      - ./sql/008_collection_discovery_sweeps.sql:/docker-entrypoint-initdb.d/008_collection_discovery_sweeps.sql:ro
+      - ./sql/009_collection_listing_reviews.sql:/docker-entrypoint-initdb.d/009_collection_listing_reviews.sql:ro
+      - ./sql/010_collection_parse_metrics.sql:/docker-entrypoint-initdb.d/010_collection_parse_metrics.sql:ro
+      - ./sql/011_parse_attempts_append_only.sql:/docker-entrypoint-initdb.d/011_parse_attempts_append_only.sql:ro
+      - ./sql/012_collection_discovery_staged_ids.sql:/docker-entrypoint-initdb.d/012_collection_discovery_staged_ids.sql:ro
+      - ./sql/013_account_history_backfill_cursor.sql:/docker-entrypoint-initdb.d/013_account_history_backfill_cursor.sql:ro
+      - ./sql/014_collection_detail_queue.sql:/docker-entrypoint-initdb.d/014_collection_detail_queue.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment: &service-env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rehouse}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rehouse}
+      APP_API_KEY: ${APP_API_KEY:?Set APP_API_KEY in .env}
+      DTK_BASE_URL: ${DTK_BASE_URL:-}
+      DTK_API_KEY: ${DTK_API_KEY:-}
+      ENABLE_ONLINE_COLLECTION: ${ENABLE_ONLINE_COLLECTION:-false}
+      RAW_HTML_DIR: /data/raw-pages
+      COLLECTION_MIN_DELAY_SECONDS: ${COLLECTION_MIN_DELAY_SECONDS:-30}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/data
+    ports:
+      - "${API_BIND_IP:-127.0.0.1}:${API_PORT:-8787}:8000"
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [private]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+  worker:
+    build: .
+    restart: unless-stopped
+    environment: *service-env
+    depends_on:
+      db: {condition: service_healthy}
+    volumes:
+      - ./data:/data
+    networks: [private]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "-m", "app.worker"]
+
+volumes:
+  pgdata:
+
+networks:
+  private:
+    driver: bridge

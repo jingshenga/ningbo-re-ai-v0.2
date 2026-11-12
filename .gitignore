@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+*.log
+*.mp4
+*.wav
+/data/raw-pages/*
+!/data/raw-pages/.gitkeep
+/data/sample-manifest.csv
+backup-*.sql
+/backups/

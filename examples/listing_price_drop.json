@@ -1,0 +1,13 @@
+{
+  "source": "agent",
+  "source_listing_id": "DEMO-DONGHU-0001",
+  "title": "【模拟数据】东湖花园4房",
+  "community_name": "东湖花园",
+  "district": "鄞州",
+  "area_sqm": 160,
+  "bedrooms": 4,
+  "floor_text": "中层",
+  "asking_price_wan": 365,
+  "observed_at": "2026-11-08T10:00:00+08:00",
+  "permission_note": "模拟数据，不能据此决策"
+}

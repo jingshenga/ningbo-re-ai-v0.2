@@ -1,0 +1,7 @@
+{
+  "platform": "wechat_channels",
+  "account_ref": "示例视频号-请替换成唯一标识",
+  "nickname": "视频号样例（仅导入，非自动监控）",
+  "history_mode": "none",
+  "poll_interval_minutes": 120
+}
