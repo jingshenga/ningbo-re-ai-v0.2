@@ -19,6 +19,3 @@ volumes:
   pgdata:
     name: rehouse-ai-uat-20261113-pgdata
 
-networks:
-  private:
-    internal: true
