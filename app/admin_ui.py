@@ -13,7 +13,7 @@ import zlib
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -79,7 +79,7 @@ header strong{{font-size:18px}}main{{max-width:1180px;margin:28px auto;padding:0
 .row{{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 0;border-top:1px solid var(--line)}}.row:first-of-type{{border-top:0}}.row strong{{display:block}}.tag{{border-radius:999px;padding:3px 9px;background:#edf2ff;color:#284bb5;font-size:12px;white-space:nowrap}}.tag.ok{{background:#eaf7ef;color:var(--green)}}.tag.warn{{background:#fff5dd;color:var(--amber)}}.tag.bad{{background:#fff0ee;color:var(--red)}}
 a{{color:var(--blue);text-decoration:none}}a:hover{{text-decoration:underline}}.nav{{display:flex;gap:18px;align-items:center}}button{{border:0;background:none;color:var(--blue);font:inherit;cursor:pointer;padding:4px}}
 .empty{{padding:18px 0;color:var(--muted)}}.notice{{padding:12px 14px;background:#edf4ff;border-radius:10px;color:#294a78;margin:12px 0}}
-.login{{max-width:420px;margin:8vh auto;background:white;border:1px solid var(--line);border-radius:16px;padding:28px}}label{{display:block;font-weight:600;margin:18px 0 7px}}input,select,textarea{{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}}textarea{{min-height:180px;font-family:ui-monospace,monospace}}.filters{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}}.filters label{{margin:0}}.table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}}th{{color:var(--muted);font-size:13px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:12px;border-radius:8px}}.actions{{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}}.actions button,.button{{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 13px;font:inherit;cursor:pointer}}.primary{{width:100%;margin-top:20px;background:var(--blue);color:white;border:0;border-radius:8px;padding:12px;font:inherit;font-weight:650}}
+.login{{max-width:420px;margin:8vh auto;background:white;border:1px solid var(--line);border-radius:16px;padding:28px}}label{{display:block;font-weight:600;margin:18px 0 7px}}input,select,textarea{{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}}textarea{{min-height:180px;font-family:ui-monospace,monospace}}.filters{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}}.field-check input{{width:auto}}.filters label{{margin:0}}.table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}}th{{color:var(--muted);font-size:13px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:12px;border-radius:8px}}.actions{{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}}.actions button,.button{{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 13px;font:inherit;cursor:pointer}}.primary{{width:100%;margin-top:20px;background:var(--blue);color:white;border:0;border-radius:8px;padding:12px;font:inherit;font-weight:650}}
 @media(max-width:760px){{.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cols{{grid-template-columns:1fr}}header{{padding:14px 18px}}main{{margin:20px auto;padding:0 14px}}.metric{{font-size:25px}}}}
 </style></head><body>{body}</body></html>"""
     response = HTMLResponse(page, status_code=status_code)
@@ -369,6 +369,7 @@ def _candidate_html_evidence(row):
 def _layout_fields(row, keys):
     esc = lambda value: html.escape(str(value if value is not None else ""), quote=True)
     return "".join(
+        f'<label class="field-check"><input type="checkbox" name="correct_{esc(key)}" value="1">本次确认</label>'
         f'<label>{esc(key)}<input name="{esc(key)}" value="{esc(row.get(key))}"></label>'
         for key in keys
     )
@@ -405,13 +406,13 @@ def admin_listings(request: Request, district: str | None = None,
     ) or '<tr><td colspan="5" class="empty">尚无符合条件的正式挂牌。</td></tr>'
     inner = f"""<h1>房源管理</h1><p>仅显示已审核正式挂牌。列表最多展示200条，按最近观察排序。</p>
 <form class="panel filters" method="get">
-<label>区域<input name="district" value="{esc(district)}"></label>
-<label>小区<input name="community_name" value="{esc(community_name)}"></label>
-<label>面积下限㎡<input name="min_area_sqm" type="number" min="0" step="0.01" value="{esc(min_area_sqm)}"></label>
-<label>面积上限㎡<input name="max_area_sqm" type="number" min="0" step="0.01" value="{esc(max_area_sqm)}"></label>
-<label>价格下限万<input name="min_price_wan" type="number" min="0" step="0.01" value="{esc(min_price_wan)}"></label>
-<label>价格上限万<input name="max_price_wan" type="number" min="0" step="0.01" value="{esc(max_price_wan)}"></label>
-<label>最少卧室<input name="min_bedrooms" type="number" min="0" max="20" value="{esc(min_bedrooms)}"></label>
+<label>区域<input name="district" value="{esc(district or '')}"></label>
+<label>小区<input name="community_name" value="{esc(community_name or '')}"></label>
+<label>面积下限㎡<input name="min_area_sqm" type="number" min="0" step="0.01" value="{esc(min_area_sqm or '')}"></label>
+<label>面积上限㎡<input name="max_area_sqm" type="number" min="0" step="0.01" value="{esc(max_area_sqm or '')}"></label>
+<label>价格下限万<input name="min_price_wan" type="number" min="0" step="0.01" value="{esc(min_price_wan or '')}"></label>
+<label>价格上限万<input name="max_price_wan" type="number" min="0" step="0.01" value="{esc(max_price_wan or '')}"></label>
+<label>最少卧室<input name="min_bedrooms" type="number" min="0" max="20" value="{esc(min_bedrooms or '')}"></label>
 <div class="actions"><button type="submit">筛选</button><a href="/admin/listings">清除条件</a></div>
 </form><section class="panel table-wrap"><table><thead><tr><th>小区 / 区域 / 来源</th><th>面积 / 户型</th><th>挂牌价</th><th>观察时间</th><th>来源链接</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
     return _admin_page("房源管理", inner, request.cookies.get(COOKIE_NAME, ""))
@@ -504,13 +505,14 @@ async def admin_correct_candidate(request: Request, candidate_id: UUID):
     _verify_csrf(request, values)
     names = ("source_listing_id", "title", "community_name", "district", "area_sqm",
              "bedrooms", "floor_text", "decoration", "asking_price_wan")
-    payload = {name: values[name][0] for name in names if values.get(name, [""])[0].strip()}
+    payload = {name: (values.get(name, [""])[0] or None) for name in names if values.get(f"correct_{name}") == ["1"]}
     payload["review_note"] = values.get("review_note", [""])[0]
     try:
         collection_service.correct_candidate(candidate_id, CandidateCorrection(**payload))
     except (ValidationError, HTTPException) as exc:
         message = getattr(exc, "detail", None) or "请检查纠错字段和审核备注。"
-        return RedirectResponse(f"/admin/candidates/{candidate_id}?message={html.escape(str(message), quote=True)}", status_code=303)
+        query = urlencode({"message": str(message)})
+        return RedirectResponse(f"/admin/candidates/{candidate_id}?{query}", status_code=303)
     return RedirectResponse(f"/admin/candidates/{candidate_id}?message=纠错已保存", status_code=303)
 
 
@@ -525,7 +527,8 @@ async def admin_review_candidate(request: Request, candidate_id: UUID):
         collection_service.review_candidate(candidate_id, decision, note)
     except HTTPException as exc:
         message = getattr(exc, "detail", None) or "审核失败。"
-        return RedirectResponse(f"/admin/candidates/{candidate_id}?message={html.escape(str(message), quote=True)}", status_code=303)
+        query = urlencode({"message": str(message)})
+        return RedirectResponse(f"/admin/candidates/{candidate_id}?{query}", status_code=303)
     return RedirectResponse(f"/admin/candidates/{candidate_id}?message=审核已记录", status_code=303)
 
 
