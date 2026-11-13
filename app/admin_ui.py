@@ -663,7 +663,10 @@ def admin_opportunities(request: Request, days: int = 30):
         raise HTTPException(status_code=422, detail="days must be 7, 30, or 90")
     rows = services.opportunities(days=days, limit=100)
     drops = [row for row in rows if "same_listing_price_drop" in (row.get("signals") or [])]
-    other = [row for row in rows if "same_listing_price_drop" not in (row.get("signals") or [])]
+    other = [row for row in rows if any(
+        signal in (row.get("signals") or [])
+        for signal in ("below_raw_listing_median", "cross_platform_price_gap")
+    )]
     esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
     drop_rows = "".join(
         f'<tr><td>{esc(row.get("community"))}<br>{esc(row.get("district"))} · {esc(row.get("source"))}</td>'
@@ -673,9 +676,18 @@ def admin_opportunities(request: Request, days: int = 30):
         f'<td>{_safe_link(row.get("drop_evidence_url"))}<br>{_safe_link(row.get("listing_url"))}</td></tr>'
         for row in drops
     ) or '<tr><td colspan="5" class="empty">所选时间窗内暂无同来源挂牌降价记录。</td></tr>'
+    def counterpart_evidence(row):
+        gaps = row.get("cross_platform_price_gaps") or []
+        return "".join(
+            f'<li>{esc(gap.get("source"))} · ID {esc(gap.get("source_listing_id"))} · '
+            f'{esc(gap.get("verification_status"))} · {esc(gap.get("asking_price_wan"))} 万 · '
+            f'{esc(gap.get("unit_price_gap_pct"))}% · {_safe_link(gap.get("listing_url"))}</li>'
+            for gap in gaps
+        ) or "<li>无跨平台候选</li>"
+
     other_rows = "".join(
         f'<tr><td>{esc(row.get("community"))} · {esc(row.get("source"))}</td>'
-        f'<td>{esc("；".join(row.get("signal_reasons") or []))}</td>'
+        f'<td>{esc("；".join(row.get("signal_reasons") or []))}<ul>{counterpart_evidence(row)}</ul></td>'
         f'<td>{esc(row.get("last_observed_at"))}</td><td>{_safe_link(row.get("listing_url"))}</td></tr>'
         for row in other
     ) or '<tr><td colspan="4" class="empty">暂无其他挂牌比较线索。</td></tr>'
@@ -708,7 +720,7 @@ def admin_monitoring(request: Request):
         else:
             status = (latest or {}).get("status") or account.get("last_status") or "尚无同步"
         run_history = "".join(
-            f'<li>{esc(run.get("started_at"))} · {esc(run.get("status"))} · {esc(run.get("items_synced"))}条</li>'
+            f'<li>{esc(run.get("started_at"))} · {esc(run.get("status"))} · 观察 {esc(run.get("observed_count"))} 条 / 新增 {esc(run.get("new_count"))} 条</li>'
             for run in runs
         ) or "<li>尚无同步记录</li>"
         account_rows.append(
