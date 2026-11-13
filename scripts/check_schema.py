@@ -38,6 +38,22 @@ EXPECTED_COLUMNS = {
         "discovered_page_url", "attempt_count", "last_error_type",
     },
 }
+EXPECTED_FUNCTIONS = {
+    "maintain_collection_parse_metrics",
+    "reject_collection_parse_attempt_mutation",
+}
+EXPECTED_TRIGGERS = {
+    "collection_parse_attempt_metrics_trigger": (
+        "collection_parse_attempts", "maintain_collection_parse_metrics",
+    ),
+    "collection_parse_attempts_no_update_delete": (
+        "collection_parse_attempts", "reject_collection_parse_attempt_mutation",
+    ),
+    "collection_parse_attempts_no_truncate": (
+        "collection_parse_attempts", "reject_collection_parse_attempt_mutation",
+    ),
+}
+EXPECTED_CONSTRAINTS = {"collection_listing_observations_review_status_check"}
 
 
 def inspect_schema(conn):
@@ -45,13 +61,39 @@ def inspect_schema(conn):
     with conn.transaction():
         conn.execute("SET TRANSACTION READ ONLY")
         schema = conn.execute("SELECT current_schema()").fetchone()[0]
-        rows = conn.execute(
+        columns = conn.execute(
             """SELECT table_name, column_name
                FROM information_schema.columns
                WHERE table_schema = current_schema()"""
         ).fetchall()
+        functions = conn.execute(
+            """SELECT p.proname
+               FROM pg_proc AS p
+               JOIN pg_namespace AS n ON n.oid = p.pronamespace
+               WHERE n.nspname = current_schema() AND p.proname = ANY(%s)""",
+            (sorted(EXPECTED_FUNCTIONS),),
+        ).fetchall()
+        triggers = conn.execute(
+            """SELECT t.tgname, c.relname, p.proname
+               FROM pg_trigger AS t
+               JOIN pg_class AS c ON c.oid = t.tgrelid
+               JOIN pg_namespace AS n ON n.oid = c.relnamespace
+               JOIN pg_proc AS p ON p.oid = t.tgfoid
+               WHERE n.nspname = current_schema()
+                 AND t.tgname = ANY(%s)
+                 AND NOT t.tgisinternal AND t.tgenabled <> 'D'""",
+            (sorted(EXPECTED_TRIGGERS),),
+        ).fetchall()
+        constraints = conn.execute(
+            """SELECT c.conname
+               FROM pg_constraint AS c
+               JOIN pg_namespace AS n ON n.oid = c.connamespace
+               WHERE n.nspname = current_schema() AND c.conname = ANY(%s)""",
+            (sorted(EXPECTED_CONSTRAINTS),),
+        ).fetchall()
+
         actual = {}
-        for table_name, column_name in rows:
+        for table_name, column_name in columns:
             actual.setdefault(table_name, set()).add(column_name)
         prerequisites = {
             "collection_discovery_states": {"target_id", "sweep_number", "sweep_seen_listing_ids"},
@@ -60,7 +102,7 @@ def inspect_schema(conn):
                 "target_id", "source", "source_listing_id", "last_seen_sweep",
             },
         }
-        if all(columns <= actual.get(table, set()) for table, columns in prerequisites.items()):
+        if all(required <= actual.get(table, set()) for table, required in prerequisites.items()):
             unbacked_sweep_ids = conn.execute(
                 """SELECT count(*)
                    FROM collection_discovery_states AS state
@@ -81,10 +123,24 @@ def inspect_schema(conn):
     missing_tables = sorted(set(EXPECTED_COLUMNS) - set(actual))
     missing_columns = sorted(
         f"{table}.{column}"
-        for table, columns in EXPECTED_COLUMNS.items()
-        for column in columns - actual.get(table, set())
+        for table, expected in EXPECTED_COLUMNS.items()
+        for column in expected - actual.get(table, set())
     )
-    return schema, missing_tables, missing_columns, unbacked_sweep_ids
+    actual_functions = {row[0] for row in functions}
+    actual_triggers = {(row[0], row[1], row[2]) for row in triggers}
+    missing_functions = sorted(EXPECTED_FUNCTIONS - actual_functions)
+    missing_triggers = sorted(
+        f"{name} on {table}"
+        for name, (table, function) in EXPECTED_TRIGGERS.items()
+        if (name, table, function) not in actual_triggers
+    )
+    missing_constraints = sorted(
+        EXPECTED_CONSTRAINTS - {row[0] for row in constraints}
+    )
+    return (
+        schema, missing_tables, missing_columns, missing_functions,
+        missing_triggers, missing_constraints, unbacked_sweep_ids,
+    )
 
 
 def main():
@@ -104,23 +160,31 @@ def main():
 
     try:
         with psycopg.connect(dsn) as conn:
-            schema, missing_tables, missing_columns, unbacked_sweep_ids = inspect_schema(conn)
+            result = inspect_schema(conn)
     except psycopg.Error:
         print("schema check failed; connection details redacted", file=sys.stderr)
         return 2
 
+    (
+        schema, missing_tables, missing_columns, missing_functions,
+        missing_triggers, missing_constraints, unbacked_sweep_ids,
+    ) = result
     print(f"Read-only schema check: database={database}, schema={schema}")
     if unbacked_sweep_ids is not None:
         print(f"Unbacked active-sweep IDs (review before migration 012): {unbacked_sweep_ids}")
-    if missing_tables or missing_columns or unbacked_sweep_ids:
+    if missing_tables or missing_columns or missing_functions or missing_triggers or missing_constraints or unbacked_sweep_ids:
         if missing_tables:
             print("Missing tables: " + ", ".join(missing_tables))
         if missing_columns:
             print("Missing columns: " + ", ".join(missing_columns))
+        if missing_functions:
+            print("Missing functions: " + ", ".join(missing_functions))
+        if missing_triggers:
+            print("Missing enabled triggers: " + ", ".join(missing_triggers))
+        if missing_constraints:
+            print("Missing constraints: " + ", ".join(missing_constraints))
         return 1
-    print("Migration 006-014 signature objects are present.")
-    if unbacked_sweep_ids is None:
-        print("Sweep-ID consistency check unavailable until migrations 006-008 are present.")
+    print("Migration 006-014 signature tables, columns and critical objects are present.")
     return 0
 
 
