@@ -308,6 +308,7 @@ def test_saved_search_creation_uses_existing_model_and_service(monkeypatch):
     search_id = uuid4()
     monkeypatch.setattr(admin_ui.services, "create_saved_search",
                         lambda payload: (created.append(payload), {"id": search_id})[1])
+    monkeypatch.setattr(admin_ui.services, "all_saved_searches", lambda: [])
     client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
     page = client.get("/admin/searches")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
