@@ -47,7 +47,7 @@ APP_API_KEY=... python scripts/enrich_local_video.py listing.mp4 \
 | OCR `rapidocr` | 优先真实引擎（rapidocr-onnxruntime）；失败 → `unavailable` |
 | OCR `mock` | 测试与人工标注路径；同上有 mock 标记 |
 
-`auto`：真实引擎可用则用真实引擎；ASR 无可供脚本时显式 `unavailable`（不产出空内容）；OCR 回落 mock 并标记。
+`auto`：真实引擎可用则优先使用；ASR缺模型且无人工稿时为`unavailable`；OCR缺RapidOCR且无人工文字时也为`unavailable`，只有明确提供`--ocr-text`才回退带`mock`标记的人工文字路径。
 
 ## 4. 资源限制（绿联 DXP4800 N100 / 16GB，默认单任务）
 

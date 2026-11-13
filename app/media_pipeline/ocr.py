@@ -37,6 +37,16 @@ class MockOcrEngine:
         )
 
 
+class UnavailableOcrEngine:
+    """No real OCR dependency and no supplied manual text; never claim success."""
+
+    engine = 'none'
+
+    def recognize(self, frames: list[KeyFrame]) -> OcrResult:
+        return OcrResult(status='unavailable', engine=self.engine,
+                         error='no OCR engine available; install RapidOCR or provide --ocr-text')
+
+
 class RapidOcrEngine:
     """RapidOCR (onnxruntime) wrapper; optional dependency, lazy loaded."""
 
@@ -113,8 +123,11 @@ def build_ocr_engine(engine: str | None, text_map: dict[int, str] | None = None,
     if engine == 'rapidocr':
         return RapidOcrEngine()
     if engine in (None, 'auto'):
-        return RapidOcrEngine() if _rapidocr_available() else MockOcrEngine(
-            text_map=text_map, default_text=default_text)
+        if _rapidocr_available():
+            return RapidOcrEngine()
+        if text_map or default_text:
+            return MockOcrEngine(text_map=text_map, default_text=default_text)
+        return UnavailableOcrEngine()
     raise ValueError('unknown ocr engine: ' + str(engine))
 
 
