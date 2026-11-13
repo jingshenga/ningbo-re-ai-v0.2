@@ -10,15 +10,12 @@ fi
 command -v docker >/dev/null
 docker compose version >/dev/null
 command -v python3 >/dev/null
-python3 -c 'import playwright' >/dev/null || {
-  echo "Install requirements-uat.txt and Chromium before running this script." >&2
-  exit 2
-}
 
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/ningbo-admin-uat.XXXXXX")"
 artifact_dir="${ADMIN_UAT_ARTIFACT_DIR:-$repo_root/artifacts/admin-uat}"
 mkdir -p "$artifact_dir"
 project="ningbo-admin-uat-$(date +%s)-$$"
+browser_image="$project-browser"
 env_file="$test_dir/.env.uat"
 override_file="$test_dir/compose.uat.yml"
 compose_file="$test_dir/docker-compose.yml"
@@ -30,6 +27,7 @@ cleanup() {
     docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" ps >"$artifact_dir/containers.txt" 2>&1
     docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" down --volumes --remove-orphans >/dev/null 2>&1
   fi
+  docker image rm -f "$browser_image" >/dev/null 2>&1
   rm -rf "$test_dir"
   exit "$status"
 }
@@ -60,29 +58,29 @@ networks:
     internal: true
 EOF
 
-if [[ -n "$(docker compose -p "$project" -f "$compose_file" ps -q 2>/dev/null || true)" ]]; then
+if [[ -n "$(docker ps --filter "label=com.docker.compose.project=$project" -q)" ]]; then
   echo "Unique UAT compose project unexpectedly already exists; refusing to reuse it." >&2
   exit 3
 fi
 
 docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" up -d --build db api
-base_url="http://127.0.0.1:${ADMIN_UAT_PORT:-18787}"
+docker build -f "$test_dir/scripts/admin_uat_browser.Dockerfile" -t "$browser_image" "$test_dir"
+
 ready=false
 for _ in $(seq 1 60); do
-  if curl --fail --silent "$base_url/healthz" >/dev/null; then
+  if docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" exec -T api python -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/healthz", timeout=2).read()' >/dev/null 2>&1; then
     ready=true
     break
   fi
   sleep 2
 done
 if [[ "$ready" != true ]]; then
-  echo "Isolated API did not become healthy." >&2
+  echo "Isolated API did not become healthy inside its Compose network." >&2
   docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" ps >&2 || true
+  docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" logs --no-color api >&2 || true
   exit 4
 fi
 
-export ADMIN_UAT_BASE_URL="$base_url"
 export ADMIN_UAT_API_KEY="$(sed -n 's/^APP_API_KEY=//p' "$env_file")"
-export ADMIN_UAT_ARTIFACT_DIR="$artifact_dir"
 export UAT_COMMIT_SHA="$commit_sha"
-python3 "$test_dir/scripts/admin_uat_browser.py"
+docker run --rm --init --ipc=host --network "${project}_private"   -v "$test_dir:/work:ro" -v "$artifact_dir:/artifacts" -w /work   -e ADMIN_UAT_BASE_URL=http://api:8000   -e ADMIN_UAT_API_KEY   -e ADMIN_UAT_ARTIFACT_DIR=/artifacts   -e UAT_COMMIT_SHA   "$browser_image" python3 scripts/admin_uat_browser.py
