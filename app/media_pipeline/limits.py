@@ -23,12 +23,17 @@ FFMPEG_TIMEOUT_SECONDS = 120.0                      # per ffmpeg invocation (Pyt
 
 # Interval filters are literal argv elements; timestamp math uses the
 # matching numeric value, so both stay in lockstep.
+# Fixed 1280x720 bounding box: never upscale portrait frames to 1280px
+# wide. force_divisible_by=2 preserves codec-friendly even dimensions.
+FRAME_SCALE_FILTER = (
+    'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2'
+)
 INTERVAL_FILTERS = {
-    '1': 'fps=1,scale=1280:-2',
-    '2': 'fps=1/2,scale=1280:-2',
-    '3': 'fps=1/3,scale=1280:-2',
-    '5': 'fps=1/5,scale=1280:-2',
-    '10': 'fps=1/10,scale=1280:-2',
+    '1': 'fps=1,scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
+    '2': 'fps=1/2,scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
+    '3': 'fps=1/3,scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
+    '5': 'fps=1/5,scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
+    '10': 'fps=1/10,scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
 }
 
 
@@ -73,7 +78,7 @@ def sampling_filter(duration_seconds: float) -> str:
     interval = sampling_interval(duration_seconds)
     if interval == KEYFRAME_INTERVAL_SECONDS:
         return interval_filter()
-    return 'fps=1/' + format(interval, '.6g') + ',scale=1280:-2'
+    return 'fps=1/' + format(interval, '.6g') + ',' + FRAME_SCALE_FILTER
 
 
 def sampling_interval(duration_seconds: float) -> float:
