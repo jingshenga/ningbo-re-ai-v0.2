@@ -74,7 +74,10 @@ def test_chinese_bedroom_numerals_preserve_optional_spaces():
 
 
 def test_chinese_bedroom_match_does_not_take_suffix_of_larger_numbers():
-    result = extract_hints('十一室，十室，一百室，11室，10房，0室')
+    result = extract_hints(
+        '十一室，十室，一百室，11室，10房，0室，'
+        '一〇一室，三千一室，一万一室，廿一室，卅一室，佰一室，１２室'
+    )
     assert result['bedroom_mentions'] == []
     assert not any(item['field'] == 'bedroom_mentions' for item in result['evidence'])
 
