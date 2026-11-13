@@ -120,6 +120,13 @@ def main(argv: list[str] | None = None) -> int:
         if (video_id == 'listing_01'
                 and (row.get('source_note') or '').startswith('示例')):
             continue  # only skip the explicitly labeled template example
+        # Clear stale measurements before validating this run. Otherwise a
+        # missing video can accidentally reuse an earlier successful JSON.
+        if VIDEO_ID.fullmatch(video_id):
+            for suffix in ('.result.json', '.time.log'):
+                old_result = video_dir / (video_id + suffix)
+                if old_result.is_symlink() or old_result.is_file():
+                    old_result.unlink()
         if not (row.get('source_note') or '').strip():
             failures.append((video_id, 'missing source/rights note'))
             continue
@@ -132,8 +139,6 @@ def main(argv: list[str] | None = None) -> int:
         processed += 1
         result_json = video_dir / (video_id + '.result.json')
         time_log = video_dir / (video_id + '.time.log')
-        # A retry must never accidentally re-use a previous successful result.
-        result_json.unlink(missing_ok=True)
         start = time.monotonic()
         try:
             code, _, stderr, elapsed = _execute(

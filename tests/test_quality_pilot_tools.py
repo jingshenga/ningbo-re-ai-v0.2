@@ -143,3 +143,18 @@ def test_runner_fails_if_real_ocr_unavailable(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, '_execute', fake_execute)
     assert runner.main(['--csv', str(csv_file), '--dir', str(tmp_path),
                         '--known-communities', str(known)]) == 1
+
+
+def test_runner_removes_stale_output_when_media_disappears(tmp_path, monkeypatch):
+    csv_file = tmp_path / 'truth.csv'
+    write_rows(csv_file, [truth('missing')])
+    (tmp_path / 'missing.result.json').write_text(json.dumps(result()), encoding='utf-8')
+    (tmp_path / 'missing.time.log').write_text('real 0.5', encoding='utf-8')
+    known = tmp_path / 'communities.txt'
+    known.write_text('东湖花园\n', encoding='utf-8')
+    monkeypatch.setattr(runner, '_execute', lambda *a: (_ for _ in ()).throw(
+        AssertionError('missing video should never execute')))
+    assert runner.main(['--csv', str(csv_file), '--dir', str(tmp_path),
+                        '--known-communities', str(known)]) == 1
+    assert not (tmp_path / 'missing.result.json').exists()
+    assert not (tmp_path / 'missing.time.log').exists()
