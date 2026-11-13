@@ -10,7 +10,7 @@ def client_with_key(monkeypatch, **client_kwargs):
     monkeypatch.setattr(admin_ui, "APP_API_KEY", "test-admin-key")
     monkeypatch.setattr(admin_ui, "_recently_created_listings", lambda: [])
     monkeypatch.setattr(admin_ui, "_summary", lambda: {
-        "listing_count": 0, "pending_count": 0, "new_count": 0,
+        "listing_count": 0, "pending_count": 0, "new_count": 0, "recent_price_drop_count": 0,
     })
     monkeypatch.setattr(admin_ui.collection_service, "health_metrics", lambda: [])
     monkeypatch.setattr(admin_ui.services, "all_accounts", lambda: [])
@@ -79,9 +79,7 @@ def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch)
     assert dashboard.status_code == 200
     assert "全局在线采集开关已开启" in dashboard.text
     assert "机会扫描命中" in dashboard.text
-    assert "1200+" in dashboard.text
-    assert "数量为下限" in dashboard.text
-    assert "最近 90 天" in dashboard.text
+    assert "完整机会线索在机会页按需扫描" in dashboard.text
 
 def test_admin_login_rejects_non_ascii_password_without_server_error(monkeypatch):
     client = client_with_key(monkeypatch)
@@ -101,3 +99,13 @@ def test_logout_rejects_non_ascii_csrf_without_server_error(monkeypatch):
     client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
     response = client.post("/admin/logout", data={"csrf": "錯誤"})
     assert response.status_code == 403
+
+def test_dashboard_does_not_run_full_opportunity_scan(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui.services, "opportunities",
+                        lambda **kwargs: (_ for _ in ()).throw(AssertionError("expensive scan")))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    dashboard = client.get("/admin/")
+    assert dashboard.status_code == 200
+    assert "近 30 天挂牌降价" in dashboard.text
