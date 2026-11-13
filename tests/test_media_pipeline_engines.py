@@ -55,7 +55,7 @@ def test_funasr_engine_reports_unavailable_without_package(tmp_path, monkeypatch
     result = engine.transcribe(tmp_path / 'audio.wav')
     assert result.status == 'unavailable'
     assert result.engine == 'funasr'
-    assert result.model_name == 'paraformer-zh'
+    assert result.model_name == str(model)
 
 
 def test_funasr_refuses_to_download_missing_model(monkeypatch, tmp_path):
