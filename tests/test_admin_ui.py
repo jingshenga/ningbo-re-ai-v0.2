@@ -301,3 +301,94 @@ def test_candidate_filters_keep_selected_status_and_source(monkeypatch):
     assert page.status_code == 200
     assert '<option value="approved" selected>已通过</option>' in page.text
     assert '<option value="anjuke" selected>安居客</option>' in page.text
+
+def test_saved_search_creation_uses_existing_model_and_service(monkeypatch):
+    client = client_with_key(monkeypatch)
+    created = []
+    search_id = uuid4()
+    monkeypatch.setattr(admin_ui.services, "create_saved_search",
+                        lambda payload: (created.append(payload), {"id": search_id})[1])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/searches")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post("/admin/searches", data={
+        "csrf": csrf, "name": "海曙改善房", "district": "海曙区",
+        "max_price_wan": "350", "min_area_sqm": "90", "min_bedrooms": "3",
+        "notifications_enabled": "on",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert str(search_id) in response.headers["location"]
+    assert created[0].district == "海曙区"
+    assert str(created[0].max_price_wan) == "350"
+    assert created[0].notifications_enabled is True
+
+
+def test_saved_search_matches_show_existing_match_reasons(monkeypatch):
+    client = client_with_key(monkeypatch)
+    search_id = uuid4()
+    monkeypatch.setattr(admin_ui.services, "saved_search_matches", lambda *args, **kwargs: {
+        "search_id": search_id, "total": 1, "matches": [{
+            "community_name": "合成小区", "district": "海曙区", "source": "beike",
+            "area_sqm": 100, "bedrooms": 3, "asking_price_wan": 300,
+            "match_reasons": ["区域符合", "预算符合", "面积符合"],
+            "listing_url": "https://example.test/listing/1", "last_observed_at": "now",
+        }],
+    })
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get(f"/admin/searches/{search_id}/matches")
+    assert page.status_code == 200
+    assert "合成小区" in page.text
+    assert "预算符合" in page.text
+
+
+def test_opportunity_page_selects_window_and_shows_price_evidence(monkeypatch):
+    client = client_with_key(monkeypatch)
+    calls = []
+    monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: (
+        calls.append(kwargs), [
+            {"signals": ["same_listing_price_drop"], "community": "降价小区",
+             "district": "海曙区", "source": "beike", "drop_from_price_wan": 330,
+             "drop_to_price_wan": 300, "drop_amount_wan": 30, "drop_pct_in_window": 9.09,
+             "drop_from_observed_at": "2026-01-01", "drop_to_observed_at": "2026-01-10",
+             "drop_evidence_url": "https://example.test/evidence",
+             "listing_url": "https://example.test/listing/1"},
+            {"signals": ["cross_platform_price_gap"], "community": "比较小区",
+             "source": "anjuke", "signal_reasons": ["同小区跨平台价差，待核实"]},
+        ],
+    )[1])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/opportunities?days=7")
+    assert page.status_code == 200
+    assert calls[-1]["days"] == 7
+    assert "330 → 300 万" in page.text
+    assert "降 30 万（9.09%）" in page.text
+    assert "同小区跨平台价差，待核实" in page.text
+
+
+def test_monitoring_page_labels_unconfigured_dtk_and_manual_accounts(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "DTK_BASE_URL", "")
+    monkeypatch.setattr(admin_ui, "DTK_API_KEY", "")
+    monkeypatch.setattr(admin_ui.services, "all_accounts", lambda: [
+        {"id": uuid4(), "platform": "douyin", "collector_mode": "dtk",
+         "account_ref": "douyin-user", "nickname": "抖音账号"},
+        {"id": uuid4(), "platform": "wechat_channels", "collector_mode": "manual",
+         "account_ref": "channels-user", "nickname": "视频号"},
+    ])
+    monkeypatch.setattr(admin_ui.services, "recent_runs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(admin_ui.services, "list_videos", lambda **kwargs: [{
+        "title": "已导入视频", "platform": "wechat_channels", "processing_status": "completed",
+        "published_at": "2026-01-01", "source_url": "https://example.test/video",
+        "extracted_fields": {"community_mentions": ["合成小区"]},
+    }])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/monitoring")
+    assert page.status_code == 200
+    assert "尚未配置DTK服务" in page.text
+    assert "手工导入；无实时同步" in page.text
+    assert "已导入视频" in page.text
+    assert "合成小区" in page.text
