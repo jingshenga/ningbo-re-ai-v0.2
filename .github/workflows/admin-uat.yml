@@ -41,7 +41,7 @@ jobs:
         run: bash scripts/admin_uat.sh
       - name: Upload browser screenshots and acceptance report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: admin-browser-uat-${{ github.run_id }}
           path: ${{ runner.temp }}/admin-uat-artifacts/
