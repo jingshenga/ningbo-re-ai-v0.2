@@ -321,7 +321,7 @@ def test_saved_search_creation_uses_existing_model_and_service(monkeypatch):
     assert response.status_code == 303
     assert str(search_id) in response.headers["location"]
     assert created[0].district == "海曙区"
-    assert str(created[0].max_price_wan) == "350"
+    assert str(created[0].max_price_wan) == "350.00"
     assert created[0].notifications_enabled is True
 
 
