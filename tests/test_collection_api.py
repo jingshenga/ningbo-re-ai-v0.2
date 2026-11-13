@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import gzip
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,9 @@ from fastapi.testclient import TestClient
 from app import collection_service
 from app.collectors import parse_listing_html
 from app.main import app
+
+# Local fixture key for monkeypatched auth; overridable via env, never a real secret.
+TEST_API_KEY = os.environ.get('NBRE_TEST_API_KEY', 'local-test-placeholder-key')
 
 
 class FakeResult:
@@ -65,12 +69,12 @@ def test_candidate_price_correction_api_returns_manual_evidence(monkeypatch):
         yield connection
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
         response = client.patch(
             f'/api/collection/candidates/{candidate_id}',
-            headers={'X-API-Key': 'test-api-key'},
+            headers={'X-API-Key': TEST_API_KEY},
             json={'asking_price_wan': 200, 'review_note': '对照保存页面确认挂牌价'},
         )
 
@@ -107,10 +111,10 @@ def test_saved_html_api_reports_truncated_candidate_as_not_ready(tmp_path, monke
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(tmp_path / 'raw-pages'))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': 'beike', 'source_url': url, 'html': html})
 
     body = response.json()
@@ -141,10 +145,10 @@ def test_saved_html_api_returns_range_conflict_evidence(tmp_path, monkeypatch):
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(tmp_path / 'raw-pages'))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': 'beike', 'source_url': url, 'html': html})
 
     body = response.json()
@@ -164,7 +168,9 @@ def test_saved_html_api_returns_range_conflict_evidence(tmp_path, monkeypatch):
     ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
     ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
 ])
-@pytest.mark.parametrize('transaction_label', ['合同总价', '签约总价'])
+@pytest.mark.parametrize('transaction_label', [
+    '合同总价', '签约总价', '评估总价', '银行评估总价', '租金总价', '原总价',
+])
 def test_saved_html_api_keeps_transaction_price_as_evidence_only(
         tmp_path, monkeypatch, source, source_url, transaction_label):
     html = ('<html><body><main>小区：东湖花园 建筑面积：160㎡ '
@@ -187,10 +193,10 @@ def test_saved_html_api_keeps_transaction_price_as_evidence_only(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -206,14 +212,18 @@ def test_saved_html_api_keeps_transaction_price_as_evidence_only(
         assert saved.read() == html.encode('utf-8')
 
 
+@pytest.mark.parametrize('non_total_price', [
+    '挂牌价：2万／㎡',
+    '总价：3.6万/年', '租金总价：3.6万/月', '挂牌价：0.3万/天',
+])
 @pytest.mark.parametrize(('source', 'source_url'), [
     ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
     ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
 ])
-def test_saved_html_api_keeps_unit_price_out_of_total_price_candidate(
-        tmp_path, monkeypatch, source, source_url):
+def test_saved_html_api_keeps_non_total_price_out_of_total_price_candidate(
+        tmp_path, monkeypatch, source, source_url, non_total_price):
     html = ('<html><body><main>小区：东湖花园 建筑面积：100㎡ '
-            '挂牌价：2万／㎡</main></body></html>')
+            f'{non_total_price}</main></body></html>')
     parsed = parse_listing_html(source, source_url, html)
     raw_dir = tmp_path / 'raw-pages'
     raw_path = raw_dir / f'{parsed.sha256}.html.gz'
@@ -232,10 +242,10 @@ def test_saved_html_api_keeps_unit_price_out_of_total_price_candidate(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -296,10 +306,10 @@ def test_saved_html_api_stages_approximate_price_for_manual_correction(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -352,10 +362,10 @@ def test_saved_html_api_preserves_qualified_price_range_evidence(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -410,10 +420,10 @@ def test_saved_html_api_stages_non_exact_area_for_manual_review(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -463,10 +473,10 @@ def test_saved_html_api_preserves_qualified_area_range_evidence(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -515,10 +525,10 @@ def test_saved_html_api_keeps_exact_price_before_folded_start_summary(
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': source, 'source_url': source_url, 'html': html})
 
     body = response.json()
@@ -545,10 +555,10 @@ def test_saved_html_api_rejects_nul_before_storage_or_database_access(tmp_path, 
     monkeypatch.setattr(collection_service, 'session', unexpected_session)
     raw_dir = tmp_path / 'raw-pages'
     monkeypatch.setattr(collection_service, 'RAW_HTML_DIR', str(raw_dir))
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
-        response = client.post('/api/collection/pages', headers={'X-API-Key': 'test-api-key'},
+        response = client.post('/api/collection/pages', headers={'X-API-Key': TEST_API_KEY},
                                json={'source': 'beike', 'source_url': url, 'html': html})
 
     assert response.status_code == 422
@@ -575,12 +585,12 @@ def test_candidate_approval_api_requires_numeric_precision_correction(monkeypatc
         yield connection
 
     monkeypatch.setattr(collection_service, 'session', fake_session)
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    monkeypatch.setattr('app.main.APP_API_KEY', TEST_API_KEY)
 
     with TestClient(app) as client:
         response = client.post(
             f'/api/collection/candidates/{candidate_id}/review',
-            headers={'X-API-Key': 'test-api-key'},
+            headers={'X-API-Key': TEST_API_KEY},
             params={'decision': 'approve', 'note': '已核对原始页面'},
         )
 

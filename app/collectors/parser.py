@@ -19,7 +19,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 from app.collectors.url_policy import CollectionError
 
-PARSER_VERSION = 'generic-labelled-v0.2.166'
+PARSER_VERSION = 'generic-labelled-v0.2.168'
 INLINE_CSS_PARSE_CACHE_LIMIT = 1024
 MAX_VISIBLE_TEXT_CHARS = 35_000
 _INLINE_CSS_PARSE_CACHE: ContextVar[
@@ -30,7 +30,8 @@ _INLINE_CSS_CACHED_PROPERTIES = frozenset((
     'mask', 'mask-image', '-webkit-mask', '-webkit-mask-image'))
 NUMERIC_TEXT_PATTERN = r'(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?'
 NUMERIC_RANGE_SEPARATOR = r'[-−－–—~～〜至到]'
-NON_LISTING_PRICE_CONTEXTS = ('成交', '交易', '历史', '原始', '预估', '网签', '合同', '签约', '口播')
+NON_LISTING_PRICE_CONTEXTS = ('成交', '交易', '历史', '原始', '预估', '网签', '合同', '签约', '口播',
+                              '评估')
 NON_LISTING_PRICE_CONTEXT_PATTERN = re.compile(
     '(?:' + '|'.join(r'\s*'.join(map(re.escape, context))
                       for context in NON_LISTING_PRICE_CONTEXTS) + ')'
@@ -1053,7 +1054,8 @@ def _parse_generic_listing_html(source_url: str, html: str,
                          rf'(?=[{TEXT_FIELD_STOP_CHARS}\[\]<>]|{community_next_field}|$)')
     non_listing_price_prefixes = (
         '折后', '优惠后', '优惠', '折扣后', '降价后', '参考', '估算', '成交', '交易',
-        '历史', '原始', '预估', '网签', '合同', '签约', '口播', '口播：')
+        '历史', '原始', '预估', '网签', '合同', '签约', '口播', '口播：',
+        '评估', '租金', '月租', '年租', '原')
     price_labels = r'(?:挂牌总价|挂牌价|挂牌售价|(?<!挂牌)售价|出售总价|(?<!挂牌)(?<!出售)总价)'
     price_number = r'[0-9,]+(?:\.[0-9]+)?'
     range_separator = NUMERIC_RANGE_SEPARATOR
@@ -1062,6 +1064,12 @@ def _parse_generic_listing_html(source_url: str, html: str,
     price_per_area_suffix = (
         r'\s*(?:[（(]\s*)?元?\s*(?:[（(]\s*)?(?:[/／]|每)\s*'
         r'(?:㎡|m²|平米|平方米|平|平方)\s*(?:[）)])?'
+    )
+    # Per-period unit must sit tight against the amount (3.6万/年, 3.6万元/月,
+    # 3.6万每月); separate clauses like "总价：300万 每月还贷1万元" or
+    # "总价：300万（每年物业费2000元）" must not downgrade the exact price.
+    price_per_period_suffix = (
+        r'元?(?:[/／]|每)(?:年|月|日|天|周|小时|季度)\s*(?:[）)])?'
     )
     def is_linked_non_listing_price(match, candidate_text: str) -> bool:
         preceding_text = candidate_text[max(0, match.start() - 32):match.start()]
@@ -1093,12 +1101,14 @@ def _parse_generic_listing_html(source_url: str, html: str,
                      + r'([0-9,]+(?:\.[0-9]+)?)\s*万'
                      + rf'(?:{non_exact_price_suffix_source})?'
                      + rf'(?!{price_per_area_suffix})'
+                     + rf'(?!{price_per_period_suffix})'
                      rf'(?!\s*{range_separator}\s*{range_endpoint_start})')
     price_range_pattern = (
         price_label_pattern
         + rf'({price_number}\s*万?\s*{range_separator}\s*{price_number}\s*万)'
         + rf'(?:{non_exact_price_suffix_source})?')
     price_range_pattern += rf'(?!{price_per_area_suffix})'
+    price_range_pattern += rf'(?!{price_per_period_suffix})'
     non_exact_price_before_number = re.compile(
         rf'{non_exact_price_before_number_source}\s*[:：]?\s*(?:为\s*)?$'
     )
