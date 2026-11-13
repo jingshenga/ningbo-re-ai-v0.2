@@ -1,3 +1,9 @@
+## 2026-11-13 Issue #2 CI merged; Issue #4 migration preflight
+- PR #6 was squash-merged as `86fbbd462fa8897e151f437b0fcd17fed55a9562`; Issue #2 is closed. The PR-head run passed: fast suite 1849 passed, 0 skipped, 27 subtests passed; isolated PostgreSQL 17 suite 31 passed, 0 skipped. The main push run also passed both jobs with the same counts.
+- Issue #4 ran migrations 001–014 in order and reran 006–014 against a synthetic V0.1 PostgreSQL 17 database. Selected listing, price history, saved-search and notification fields remained unchanged. A deliberate transactional DDL error rolled back. All temporary PG17 resources were removed.
+- Added a read-only 006–014 schema signature checker and transaction-boundary tests. Live production schema and real V0.1 backup were not accessed or verified.
+- Migration 012 clears `sweep_seen_listing_ids` without copying it. Current application reads sweep observations from the observation table, but old sweep-only IDs without a matching observation remain an unverified data-preservation risk; verify/fix separately before production migration. No SQL migration was changed and production remained untouched.
+
 ## 2026-11-12 P0-03在隔离PostgreSQL 17验证不等式挂牌价证据留存
 - 新增数据库集成回归覆盖`挂牌价：>=200万`与`总价：≤200万`。API候选保持pending、`asking_price_wan`为空且未就绪；数据库JSONB持久化数值候选、完整quote、`is_non_exact=true`及`non_exact_asking_price`警告，原始HTML SHA-256及gzip字节逐项核对。
 - NAS隔离PostgreSQL 17完整数据库集成文件 **31 passed**；当前本机全量离线pytest **1850 passed、30 skipped、27 subtests passed**。30项本机PostgreSQL用例未连接本机，均已在NAS隔离PG17环境实跑通过。保留1条既有Starlette/httpx弃用警告。
