@@ -75,4 +75,4 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: PostgreSQL-backed integration suite
-        run: python -m pytest -q -ra tests/test_db_integration.py
+        run: python -m pytest -q -ra tests/test_db_integration.py tests/test_migration_012_fidelity.py
