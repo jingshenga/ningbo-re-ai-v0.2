@@ -54,7 +54,6 @@ health_check() {
 }
 
 run_video_roundtrip() {
-  mkdir -p "$ROOT/data/uat-media"
   dc exec -T -u 0:0 api sh -lc \
     'mkdir -p /data/uat-media && chown 10001:10001 /data/uat-media'
 
