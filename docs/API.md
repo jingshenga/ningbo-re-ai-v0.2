@@ -121,3 +121,12 @@ HTML正文上限为1,000,000 UTF-8字节；请求JSON正文最大6,100,000字节
 - 跨平台价差只在贝壳与安居客不同来源、同小区、同户型且面积差不超过5%的挂牌间比较；面积差定义为`abs(a-b)/min(a,b)`，即以较小面积为分母。挂牌最近观察时间仅接受过去90天至请求当前时刻，未来时间戳不参与机会计算。单价差达到10%时返回`cross_platform_price_gaps`候选详情。差异率为`(高单价-低单价)/低单价`，恰好10%计入。响应标记`verification_status=candidate`并说明待核实，不自动合并房源或确认同套；该信号尚未在NAS验收。
 - V0.1来源房源人工导入API仍可用，录入时必须携带来源与许可备注，默认 `acquisition_method=manual_import`。
 - 当前只有前端Swagger `/docs`，暂无正式审核管理界面。
+
+
+## 可比挂牌价格解释
+
+`GET /api/value/comparables`（需 `X-API-Key`）按小区及相似面积查询已审核的平台挂牌记录。必填参数：`community_name`（小区名或已登记别名）、`area_sqm`（大于0且不超过20000）。可选 `bedrooms`（精确卧室数）、`area_tolerance_pct`（相对目标面积偏差，默认10%，大于0且不超过30%）、`asking_price_wan`（待比较挂牌价，万元）和 `limit`（默认30，最多100）。
+
+`comparables` 返回可追溯挂牌来源、挂牌ID/链接、最近观察时间及最近挂牌历史；`unit_price_distribution_wan_per_sqm` 返回当前合格挂牌单价分布。只有近90天内被观察且观察时间不在未来的贝壳/安居客挂牌记录参与计算，已撤牌/已售不参与；canonical 小区名优先于别名。样本按来源挂牌记录计数，不对跨平台同房去重。达到至少5条合格挂牌才返回 `comparable_asking_price_band_wan`（单价P25–P75乘以查询面积）；未达门槛时状态为 `insufficient_data`，不生成参考区间。
+
+该接口仅解释挂牌报价，不返回真实成交估值或买入结论。视频口播/经纪人声称报价不作为挂牌样本，也不会被写成挂牌价或成交价。历史只包括 `quote_type='platform_listed'` 的挂牌快照。
