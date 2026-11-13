@@ -122,7 +122,7 @@ def _private_network_only(request):
     return address.is_private or address.is_loopback
 
 
-@router.get("/admin/login", response_class=HTMLResponse)
+@router.get("/admin/login", response_class=HTMLResponse, include_in_schema=False)
 def admin_login(request: Request, error: str = ""):
     if not _private_network_only(request):
         raise HTTPException(status_code=403, detail="Admin UI is available only from a private network")
@@ -136,7 +136,7 @@ def admin_login(request: Request, error: str = ""):
     return _html_page("登录", body)
 
 
-@router.post("/admin/login")
+@router.post("/admin/login", include_in_schema=False)
 async def admin_login_submit(request: Request):
     if not _private_network_only(request):
         raise HTTPException(status_code=403, detail="Admin UI is available only from a private network")
@@ -154,13 +154,13 @@ async def admin_login_submit(request: Request):
     return response
 
 
-@router.post("/admin/logout")
+@router.post("/admin/logout", include_in_schema=False)
 async def admin_logout(request: Request):
     _check_admin(request)
     cookie = request.cookies.get(COOKIE_NAME, "")
     values = await _request_form(request)
     submitted = values.get("csrf", [""])[0]
-    if not hmac.compare_digest(submitted, _csrf_token(cookie)):
+    if not hmac.compare_digest(submitted.encode("utf-8"), _csrf_token(cookie).encode("ascii")):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
     response = RedirectResponse("/admin/login", status_code=303)
     response.delete_cookie(COOKIE_NAME, path="/admin", httponly=True, samesite="strict")
