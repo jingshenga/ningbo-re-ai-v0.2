@@ -1,0 +1,20 @@
+name: rehouse-ai-uat-20261113
+services:
+  db:
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.uat-media
+    restart: "no"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.uat-media
+    restart: "no"
+
+volumes:
+  pgdata:
+    name: rehouse-ai-uat-20261113-pgdata
