@@ -201,3 +201,50 @@ def test_original_html_evidence_is_rendered_as_escaped_text(monkeypatch):
     assert response.status_code == 200
     assert "<script>alert" not in response.text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+
+def test_dashboard_links_to_all_admin_workflows(monkeypatch):
+    client = client_with_key(monkeypatch)
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/")
+    assert "/admin/listings" in page.text
+    assert "/admin/candidates" in page.text
+    assert "/admin/import" in page.text
+
+
+def test_listing_filter_accepts_blank_optional_numbers(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get("/admin/listings?min_area_sqm=&max_area_sqm=&min_price_wan=&max_price_wan=&min_bedrooms=")
+    assert response.status_code == 200
+
+
+def test_blank_candidate_source_means_all_sources(monkeypatch):
+    client = client_with_key(monkeypatch)
+    calls = []
+    monkeypatch.setattr(admin_ui.collection_service, "candidates",
+                        lambda **kwargs: (calls.append(kwargs), [])[1])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get("/admin/candidates?status=pending&source=")
+    assert response.status_code == 200
+    assert calls[-1]["source"] is None
+
+
+def test_review_accepts_maximum_length_chinese_note(monkeypatch):
+    client = client_with_key(monkeypatch)
+    received = []
+    monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
+                        lambda candidate_id, decision, note: received.append(note))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+    note = "已核验" * 333 + "结束"
+
+    response = client.post(f"/admin/candidates/{uuid4()}/review", data={
+        "csrf": csrf, "decision": "approve", "review_note": note,
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert received == [note]
