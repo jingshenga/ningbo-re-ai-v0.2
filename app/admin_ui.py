@@ -1,13 +1,16 @@
 """Server-rendered single-operator dashboard."""
 import base64
+import gzip
 import hashlib
 import hmac
 import html
 import ipaddress
+import re
 import json
 import secrets
 import time
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 from urllib.parse import parse_qs, urlsplit
 
@@ -19,7 +22,7 @@ from app import collection_service, services
 from app.db import session
 from app.collection_models import CandidateCorrection, HTMLPageIn
 from app.collectors.parser import CollectionError
-from app.settings import APP_API_KEY, DTK_API_KEY, DTK_BASE_URL, ENABLE_ONLINE_COLLECTION
+from app.settings import APP_API_KEY, DTK_API_KEY, DTK_BASE_URL, ENABLE_ONLINE_COLLECTION, RAW_HTML_DIR
 
 
 router = APIRouter()
@@ -320,6 +323,24 @@ def _candidate_detail(candidate_id):
                             (candidate_id,)).fetchone()
 
 
+def _candidate_html_evidence(row):
+    sha = str(row.get("raw_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", sha):
+        return None
+    folder = Path(RAW_HTML_DIR)
+    path = folder / f"{sha}.html.gz"
+    if folder.is_symlink() or path.is_symlink() or not path.is_file():
+        return None
+    try:
+        with gzip.open(path, "rb") as source:
+            content = source.read(1_000_001)
+        if len(content) > 1_000_000:
+            return None
+        return content.decode("utf-8")
+    except (OSError, EOFError, UnicodeDecodeError):
+        return None
+
+
 def _layout_fields(row, keys):
     esc = lambda value: html.escape(str(value if value is not None else ""), quote=True)
     return "".join(
@@ -437,7 +458,7 @@ def admin_candidate_detail(request: Request, candidate_id: UUID, message: str = 
     inner = f"""<h1>候选详情</h1>{status_note}<p>{esc(row.get("source"))} · {esc(row.get("review_status"))} · {esc(row.get("captured_at"))}</p>
 <section class="panel"><h2>来源与证据</h2><p>来源页面：{_safe_link(row.get("source_url"))}</p>
 <p>采集方式：{esc(row.get("capture_method"))} · 解析器：{esc(row.get("parser_version"))}</p>
-<p>原始HTML SHA-256：<code>{esc(row.get("raw_sha256"))}</code></p>
+<p>原始HTML SHA-256：<code>{esc(row.get("raw_sha256"))}</code> · <a href="/admin/candidates/{esc(candidate_id)}/evidence">查看保存的原始HTML证据</a></p>
 <details><summary>解析字段与字段证据</summary><pre>{evidence}</pre></details>
 <details><summary>解析警告</summary><pre>{warnings}</pre></details></section>
 {correct_form}
@@ -507,3 +528,16 @@ async def admin_import_page_submit(request: Request):
         return _admin_page("导入失败", inner, request.cookies.get(COOKIE_NAME, ""), 422)
     candidate_id = result["candidate"]["id"]
     return RedirectResponse(f"/admin/candidates/{candidate_id}?message=样本已解析并进入待审核", status_code=303)
+
+
+@router.get("/admin/candidates/{candidate_id}/evidence", response_class=HTMLResponse, include_in_schema=False)
+def admin_candidate_evidence(request: Request, candidate_id: UUID):
+    _check_admin(request)
+    row = _candidate_detail(candidate_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    content = _candidate_html_evidence(row)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Stored HTML evidence is unavailable")
+    inner = f"<h1>原始HTML证据</h1><p>内容已作为文本转义显示，不会执行页面脚本。</p><pre>{html.escape(content)}</pre><p><a href=\"/admin/candidates/{candidate_id}\">返回候选详情</a></p>"
+    return _admin_page("原始证据", inner, request.cookies.get(COOKIE_NAME, ""))
