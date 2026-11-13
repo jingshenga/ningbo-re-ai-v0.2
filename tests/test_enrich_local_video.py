@@ -97,6 +97,25 @@ def test_submit_sends_transcript_and_ocr_text(cli, monkeypatch, capsys):
     assert 'secret-key' not in out
 
 
+def test_submit_refuses_empty_enrichment_without_marking_video_complete(cli, monkeypatch, capsys):
+    evidence = MediaEvidence(
+        media=MediaInfo(sha256='abc123', size_bytes=10, duration_seconds=6.0,
+                        format_name='mov', has_audio=False),
+        transcript=TranscriptResult(status='unavailable', engine='none'),
+        ocr=OcrResult(status='ok', items=(), engine='rapidocr'),
+        hints={'method': 'rule_based_hints_not_verified', 'price_mentions_wan': []},
+    )
+    captured = _run_cli(cli, monkeypatch, [], evidence=evidence)
+    monkeypatch.setenv('APP_API_KEY', 'secret-key')
+
+    code = cli.main(['/tmp/x.mp4', '--submit', '--video-id', 'v-1'])
+    error = json.loads(capsys.readouterr().err)
+    assert code == cli.EXIT_SUBMIT
+    assert error['error']['kind'] == 'empty_enrichment'
+    assert captured == {}
+    assert 'secret-key' not in str(error)
+
+
 def test_submit_private_network_requires_opt_in(cli, monkeypatch, capsys):
     _run_cli(cli, monkeypatch, ['/tmp/x.mp4'])
     monkeypatch.setenv('APP_API_KEY', 'secret-key')
@@ -145,6 +164,19 @@ def test_mock_asr_script_option_flows_to_engine(cli, monkeypatch, capsys, tmp_pa
     code = cli.main(['/tmp/x.mp4', '--asr', 'mock', '--asr-script', str(script)])
     assert code == cli.EXIT_OK
     assert seen['asr'].engine == 'mock'
+
+
+@pytest.mark.parametrize('contents', [None, b'\xff'])
+def test_invalid_asr_script_returns_json_error_without_traceback(cli, capsys, tmp_path, contents):
+    script = tmp_path / 'transcript.txt'
+    if contents is not None:
+        script.write_bytes(contents)
+
+    code = cli.main(['/tmp/x.mp4', '--asr', 'mock', '--asr-script', str(script)])
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INVALID
+    assert json.loads(captured.err)['error']['kind'] == 'invalid_input'
+    assert 'Traceback' not in captured.err
 
 
 @pytest.mark.parametrize('api_base', [
