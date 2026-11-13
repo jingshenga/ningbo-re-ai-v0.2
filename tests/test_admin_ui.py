@@ -8,6 +8,7 @@ from app.main import app
 
 def client_with_key(monkeypatch, **client_kwargs):
     monkeypatch.setattr(admin_ui, "APP_API_KEY", "test-admin-key")
+    monkeypatch.setattr(admin_ui, "_recently_created_listings", lambda: [])
     monkeypatch.setattr(admin_ui, "_summary", lambda: {
         "listing_count": 0, "pending_count": 0, "new_count": 0,
     })
@@ -79,3 +80,8 @@ def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch)
     assert "全局在线采集开关已开启" in dashboard.text
     assert "近 30 天机会线索" in dashboard.text
     assert "1200+" in dashboard.text
+
+def test_admin_login_rejects_non_ascii_password_without_server_error(monkeypatch):
+    client = client_with_key(monkeypatch)
+    response = client.post("/admin/login", data={"password": "错误的密码"})
+    assert response.status_code == 401
