@@ -421,10 +421,12 @@ class UploadManager:
                     source.resolve().relative_to(work.resolve())
                 except (OSError, ValueError):
                     raise UploadServiceError(503, 'storage_unavailable', 'OCR frame path is unsafe') from None
-                if source.is_symlink() or not source.is_file():
-                    raise UploadServiceError(503, 'storage_unavailable', 'OCR frame evidence is unavailable')
                 target = destination / ('frame_%04d.jpg' % int(item['frame_index']))
+                if target.is_symlink() or (target.exists() and not target.is_file()):
+                    raise UploadServiceError(503, 'storage_unavailable', 'OCR frame evidence is unsafe') from None
                 if not target.exists():
+                    if source.is_symlink() or not source.is_file():
+                        raise UploadServiceError(503, 'storage_unavailable', 'OCR frame evidence is unavailable') from None
                     os.replace(source, target)
                     os.chmod(target, 0o600)
                 url = '/api/media/uploads/%s/frames/%s' % (upload_id, item['frame_index'])
