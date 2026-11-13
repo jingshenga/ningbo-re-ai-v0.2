@@ -37,7 +37,7 @@ All nine files declare an explicit transaction. The rehearsal verifies PostgreSQ
 
 ## Read-only schema checker
 
-`scripts/check_schema.py` compares the migration 006–014 signature tables, columns, parse-metric functions, enabled append-only/metrics triggers, and review-status constraint in the current schema. It starts a read-only transaction and only queries PostgreSQL catalogs plus a read-only count; it never executes migrations or data-changing SQL. Before migration 012, when migrations 006–008 are present, it also counts IDs in `sweep_seen_listing_ids` without a matching `collection_listing_observations.last_seen_sweep`. A nonzero count is a stop condition because 012 clears that JSON array without copying it. By default the script refuses a database name other than `rehouse_test`. Use the explicit non-test option only after obtaining approval for read access to that environment.
+`scripts/check_schema.py` compares the migration 006–014 signature tables, columns, parse-metric functions, enabled append-only/metrics triggers, and the expected migration check constraints in the current schema. It starts a read-only transaction and only queries PostgreSQL catalogs plus a read-only count; it never executes migrations or data-changing SQL. Before migration 012, when migrations 006–008 are present, it also counts IDs in `sweep_seen_listing_ids` without a matching `collection_listing_observations.last_seen_sweep`. A nonzero count is a stop condition because 012 clears that JSON array without copying it. By default the script refuses a database name other than `rehouse_test`. Use the explicit non-test option only after obtaining approval for read access to that environment.
 
 Example:
 
