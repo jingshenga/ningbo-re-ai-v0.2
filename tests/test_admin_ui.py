@@ -292,3 +292,12 @@ def test_candidate_evidence_rejects_content_hash_mismatch(tmp_path, monkeypatch)
 
     assert admin_ui._candidate_html_evidence({"raw_sha256": sha}) is None
 
+def test_candidate_filters_keep_selected_status_and_source(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui.collection_service, "candidates", lambda **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/candidates?status=approved&source=anjuke")
+    assert page.status_code == 200
+    assert '<option value="approved" selected>已通过</option>' in page.text
+    assert '<option value="anjuke" selected>安居客</option>' in page.text
