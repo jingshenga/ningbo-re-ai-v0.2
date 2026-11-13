@@ -1,0 +1,49 @@
+name: Admin browser UAT
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "sql/**"
+      - "fixtures/**"
+      - "docker-compose.yml"
+      - "scripts/admin_uat*"
+      - "requirements-uat.txt"
+      - ".github/workflows/admin-uat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-uat-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-uat:
+    name: Isolated PostgreSQL 17 and Chromium workflow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install app and browser dependencies
+        run: python -m pip install -r requirements-dev.txt -r requirements-uat.txt
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run isolated browser acceptance
+        env:
+          ADMIN_UAT_ARTIFACT_DIR: ${{ runner.temp }}/admin-uat-artifacts
+        run: bash scripts/admin_uat.sh
+      - name: Upload browser screenshots and acceptance report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-browser-uat-${{ github.run_id }}
+          path: ${{ runner.temp }}/admin-uat-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
