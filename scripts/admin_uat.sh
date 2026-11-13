@@ -12,7 +12,7 @@ docker compose version >/dev/null
 command -v python3 >/dev/null
 
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/ningbo-admin-uat.XXXXXX")"
-artifact_dir="${ADMIN_UAT_ARTIFACT_DIR:-$repo_root/artifacts/admin-uat}"
+artifact_dir="${ADMIN_UAT_ARTIFACT_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ningbo-admin-uat-artifacts}"
 mkdir -p "$artifact_dir"
 project="ningbo-admin-uat-$(date +%s)-$$"
 browser_image="$project-browser"
