@@ -1,3 +1,8 @@
+## 2026-11-13 ZCode PR #8/#7合并前GitHub Actions双模块组合验证
+- PR #8新Head `e29e6c3`：Quick **1959 passed**，隔离PG17 Integration **31 passed**。价格后接“每月还贷/每年物业费”两来源新增6项正向回归，单位周期报价两来源新增12项排除回归。
+- PR #7先单独Quick **1853 passed**、PG17 **31 passed**；随后合并最新main（含PR #8）到其审查分支，最终Head `9d561a6`：Quick **1963 passed**，PostgreSQL17 Integration **31 passed**，无失败；审查P2线程全部解决。
+- 验证地点为GitHub Actions独立测试环境，不是NAS生产DB。未进行真实贝壳/安居客页面准确率、DTK服务24小时巡检或NAS生产迁移验收。
+
 ## 2026-11-12 P0-03在隔离PostgreSQL 17验证不等式挂牌价证据留存
 - 新增数据库集成回归覆盖`挂牌价：>=200万`与`总价：≤200万`。API候选保持pending、`asking_price_wan`为空且未就绪；数据库JSONB持久化数值候选、完整quote、`is_non_exact=true`及`non_exact_asking_price`警告，原始HTML SHA-256及gzip字节逐项核对。
 - NAS隔离PostgreSQL 17完整数据库集成文件 **31 passed**；当前本机全量离线pytest **1850 passed、30 skipped、27 subtests passed**。30项本机PostgreSQL用例未连接本机，均已在NAS隔离PG17环境实跑通过。保留1条既有Starlette/httpx弃用警告。
