@@ -103,6 +103,14 @@ def _summary():
     return dict(row)
 
 
+def _recently_created_listings():
+    with session() as conn:
+        return conn.execute("""SELECT l.*,p.area_sqm,c.name AS community_name,c.district
+          FROM source_listings l JOIN properties p ON p.id=l.property_id
+          JOIN communities c ON c.id=p.community_id
+          ORDER BY l.created_at DESC LIMIT 6""").fetchall()
+
+
 def _private_network_only(request):
     if any(name in request.headers for name in ("forwarded", "x-forwarded-for", "x-real-ip")):
         return False
@@ -136,7 +144,7 @@ async def admin_login_submit(request: Request):
         raise HTTPException(status_code=503, detail="APP_API_KEY is not configured")
     values = await _request_form(request)
     supplied = values.get("password", [""])[0]
-    if not secrets.compare_digest(supplied, APP_API_KEY):
+    if not secrets.compare_digest(supplied.encode("utf-8"), APP_API_KEY.encode("utf-8")):
         return _html_page("登录", '<main class="login"><h1>宁波房产工作台</h1><p class="notice">API Key 不匹配，请重试。</p><a href="/admin/login">返回登录</a></main>', 401)
     response = RedirectResponse("/admin/", status_code=303)
     response.set_cookie(COOKIE_NAME, _signed_cookie(), max_age=SESSION_SECONDS,
@@ -176,8 +184,8 @@ def admin_dashboard(request: Request):
 
     summary = _summary()
     sources = collection_service.health_metrics()
-    accounts = services.all_accounts()
-    recent_listings = services.listings(limit=6)
+    accounts = [row for row in services.all_accounts() if row.get("platform") == "douyin"]
+    recent_listings = _recently_created_listings()
     opportunities = services.opportunities(days=30, limit=1200)
     videos = services.list_videos(limit=4)
     cookie = request.cookies.get(COOKIE_NAME, "")
@@ -220,6 +228,6 @@ def admin_dashboard(request: Request):
 <div class="notice">{esc(online_note)}　{esc(dtk_note)}</div>
 <div class="grid">{metric("在售房源", summary["listing_count"], "不含已撤牌或已售")}{metric("待审核候选", summary["pending_count"], "需要人工核验")}{metric("近 7 天新入库", summary["new_count"], "按正式挂牌创建时间")}{metric("近 30 天机会线索", opportunity_count, "包含同挂牌降价、低于挂牌中位数和跨平台价差候选；最多展示 1200 条，带 + 表示已达上限")}</div>
 <div class="cols"><section class="panel"><h2>最近入库房源</h2>{listing_rows}</section><section class="panel"><h2>采集来源状态</h2>{source_rows}</section></div>
-<div class="cols"><section class="panel"><h2>抖音账号监控</h2>{account_rows}</section><section class="panel"><h2>最近导入视频</h2>{video_rows}</section></div>
+<div class="cols"><section class="panel"><h2>抖音账号监控</h2>{account_rows}<p class="muted">微信视频号使用手工导入，不显示为实时监控。</p></section><section class="panel"><h2>最近导入视频</h2>{video_rows}</section></div>
 <p class="muted">访问范围：NAS 本机或可信内网。首次登录使用服务器环境中的 APP_API_KEY；页面不向浏览器脚本提供该密钥。</p></main>"""
     return _html_page("总览", body)
