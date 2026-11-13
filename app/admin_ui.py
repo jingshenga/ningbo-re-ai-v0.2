@@ -9,6 +9,7 @@ import re
 import json
 import secrets
 import time
+import zlib
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -337,7 +338,7 @@ def _candidate_html_evidence(row):
         if len(content) > 1_000_000:
             return None
         return content.decode("utf-8")
-    except (OSError, EOFError, UnicodeDecodeError):
+    except (OSError, EOFError, UnicodeDecodeError, zlib.error):
         return None
 
 
