@@ -135,10 +135,13 @@ def test_comparable_query_uses_bound_filters_and_exact_bedroom(monkeypatch):
 
     community_sql, community_params = connection.calls[0]
     assert "东湖花园' OR 1=1 --" not in community_sql
-    assert community_params == ("东湖花园' OR 1=1 --", "东湖花园' OR 1=1 --")
+    assert community_params == ("东湖花园' OR 1=1 --", "东湖花园' OR 1=1 --", "东湖花园' OR 1=1 --")
+    assert 'ORDER BY (c.name=%s) DESC' in community_sql
     aggregate_sql, aggregate_params = connection.calls[1]
     assert 'l.status NOT IN' in aggregate_sql
     assert 'l.source IN' in aggregate_sql
+    assert "l.last_observed_at >= now() - interval '90 days'" in aggregate_sql
+    assert 'l.last_observed_at <= now()' in aggregate_sql
     assert 'p.bedrooms=%s' in aggregate_sql
     assert aggregate_params[-1] == 3
     listing_sql, listing_params = connection.calls[2]
