@@ -451,6 +451,14 @@ def admin_candidates(request: Request, status: str = "pending", source: str | No
         raise HTTPException(status_code=422, detail="Invalid source")
     rows = collection_service.candidates(status=status, source=source, limit=200)
     esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    status_options = "".join(
+        f'<option value="{value}"{" selected" if status == value else ""}>{label}</option>'
+        for value, label in (("pending", "待审核"), ("approved", "已通过"), ("rejected", "已拒绝"))
+    )
+    source_options = "".join(
+        f'<option value="{value}"{" selected" if source == value else ""}>{label}</option>'
+        for value, label in (("", "全部"), ("beike", "贝壳"), ("anjuke", "安居客"))
+    )
     row_html = "".join(
         f'<tr><td><a href="/admin/candidates/{esc(row["id"])}">{esc(row.get("source"))} · {esc(row.get("source_listing_id"))}</a></td>'
         f'<td>{esc((row.get("extracted_fields") or {}).get("community_name"))}<br>{esc((row.get("extracted_fields") or {}).get("asking_price_wan"))}万 / {esc((row.get("extracted_fields") or {}).get("area_sqm"))}㎡</td>'
@@ -459,8 +467,8 @@ def admin_candidates(request: Request, status: str = "pending", source: str | No
         for row in rows
     ) or '<tr><td colspan="5" class="empty">该筛选条件下暂无候选。</td></tr>'
     inner = f"""<h1>采集候选审核</h1><p>审批会调用现有审核服务，并在同一事务中写入正式挂牌及价格历史。</p>
-<form class="panel filters" method="get"><label>状态<select name="status"><option value="pending">待审核</option><option value="approved">已通过</option><option value="rejected">已拒绝</option></select></label>
-<label>来源<select name="source"><option value="">全部</option><option value="beike">贝壳</option><option value="anjuke">安居客</option></select></label><div class="actions"><button type="submit">筛选</button></div></form>
+<form class="panel filters" method="get"><label>状态<select name="status">{status_options}</select></label>
+<label>来源<select name="source">{source_options}</select></label><div class="actions"><button type="submit">筛选</button></div></form>
 <section class="panel table-wrap"><table><thead><tr><th>来源 / 挂牌ID</th><th>解析房源信息</th><th>解析器 / 捕获时间</th><th>审核状态</th><th>来源链接</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
     return _admin_page("候选审核", inner, request.cookies.get(COOKIE_NAME, ""))
 
