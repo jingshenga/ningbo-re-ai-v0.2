@@ -53,7 +53,34 @@ EXPECTED_TRIGGERS = {
         "collection_parse_attempts", "reject_collection_parse_attempt_mutation",
     ),
 }
-EXPECTED_CONSTRAINTS = {"collection_listing_observations_review_status_check"}
+EXPECTED_CONSTRAINTS = {
+    "collection_discovery_states_revision_check",
+    "collection_discovery_states_version_check",
+    "collection_discovery_states_seen_listing_ids_check",
+    "collection_discovery_states_visited_page_urls_check",
+    "collection_discovery_states_last_error_type_check",
+    "collection_discovery_states_failed_attempts_check",
+    "collection_discovery_states_sweep_number_check",
+    "collection_discovery_states_sweep_seen_listing_ids_check",
+    "collection_discovery_states_completed_sweeps_check",
+    "collection_listing_observations_source_listing_id_check",
+    "collection_listing_observations_observation_count_check",
+    "collection_listing_observations_first_page_sha256_check",
+    "collection_listing_observations_last_page_sha256_check",
+    "collection_listing_observations_last_seen_sweep_check",
+    "collection_listing_observations_last_evaluated_sweep_check",
+    "collection_listing_observations_missed_complete_scans_check",
+    "collection_listing_observations_review_status_check",
+    "collection_listing_reviews_conclusion_check",
+    "collection_listing_reviews_note_check",
+    "collection_parse_attempts_capture_method_check",
+    "collection_parse_attempts_parse_status_check",
+    "collection_parse_attempts_check",
+    "collection_discovery_detail_queue_source_check",
+    "collection_discovery_detail_queue_source_listing_id_check",
+    "collection_discovery_detail_queue_attempt_count_check",
+    "collection_discovery_detail_queue_last_error_type_check",
+}
 
 
 def inspect_schema(conn):
