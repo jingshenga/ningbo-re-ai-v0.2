@@ -1,6 +1,6 @@
 # AI Coding Agent 统一开发指令（宁波房产 AI 系统）
 
-> 此文件是仓库级常驻规则。任何 Coding Agent、ChatGPT Work、Codex 或人工开发者开始改代码前均应先阅读本文件、`docs/PROJECT_STATUS.md`、`docs/PRODUCT_REQUIREMENTS.md`、`docs/DATA_SOURCE_MATRIX.md` 和 `docs/ROADMAP.md` 和 `docs/GOAL_STATE.json`。
+> 开始任务先读本文件和 `docs/CURRENT_STATE.md`，再阅读所负责 GitHub Issue 与相关源代码。根据任务需要查阅 `docs/PRODUCT_REQUIREMENTS.md`、`docs/DATA_SOURCE_MATRIX.md`、`docs/ROADMAP.md`、`docs/GOAL_STATE.json` 和 `docs/PROJECT_STATUS.md`。历史状态日志按需查阅，不要求每轮通读。职责和跨代理协作规则见 `docs/AGENT_COLLABORATION.md`。
 
 ## 1. 北极星目标
 构建运行于绿联 DXP4800（Intel N100、16GB RAM、Docker）上的宁波二手房数据与 AI 选房平台。持续采集/接收合规可用的房源、短视频、官方公开信息，建立可追溯价格历史，识别跨平台同源候选、异常降价和条件单机会；未来支持用户免费查房、持续提醒和获授权的中介撮合。
@@ -42,5 +42,5 @@
 
 如果没有 Docker、PostgreSQL、网络权限或真实网页样本，只能如实声明未验证；不得声称完成NAS联调或平台自动采集。
 
-## 6. 首要开发优先级
-执行 `docs/ROADMAP.md` 内尚未完成的 P0 任务：先采集样本、校准贝壳/安居客真实页面解析器与合规路径，再验证 NAS 数据库存续、账号监控与房源价格追踪，之后做 AI/OCR/通知。
+## 6. Issue 驱动优先级
+优先执行用户明确分配的 GitHub Issue，并按 `docs/CURRENT_STATE.md` 选择最小可验收改动。缺少真实页面许可或样本时，不开展受限采集，但继续推进可独立验证的数据库、业务接口、管理界面和 CI 工作。

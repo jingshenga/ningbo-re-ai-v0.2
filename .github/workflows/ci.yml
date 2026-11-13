@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick:
+    name: Quick checks and non-PostgreSQL tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile Python
+        run: python -m compileall -q app scripts tests
+      - name: Validate JSON files
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for path in sorted(Path(".").rglob("*.json")):
+              if any(part in {".git", ".venv", "__pycache__"} for part in path.parts):
+                  continue
+              with path.open(encoding="utf-8") as source:
+                  json.load(source)
+          PY
+      - name: Validate Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+          APP_API_KEY: ci-only-api-key
+        run: docker compose config --quiet
+      - name: Fast test suite
+        run: python -m pytest -q --ignore=tests/test_db_integration.py
+
+  postgresql-integration:
+    name: PostgreSQL 17 integration
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: rehouse_test
+          POSTGRES_USER: rehouse
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rehouse -d rehouse_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://rehouse:ci-only-password@localhost:5432/rehouse_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: PostgreSQL-backed integration suite
+        run: python -m pytest -q -ra tests/test_db_integration.py
