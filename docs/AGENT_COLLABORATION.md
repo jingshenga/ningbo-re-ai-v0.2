@@ -14,7 +14,9 @@
 - Use one focused PR per Issue. Include the Issue, goal, changed paths, test results, compatibility notes, and unverified items.
 - Do not edit files owned by the other agent unless the Issue requires a shared contract change and that change is called out in the PR.
 - Do not overwrite in-progress work. Rebase or refresh against `main` and resolve only the files owned by the current task.
-- After merge, Codex as integration lead updates `docs/CURRENT_STATE.md` once. Agents should not edit the large historical `PROJECT_STATUS.md` or `GOAL_STATE.json` in parallel unless the assigned Issue requires it.
+- Every PR description must include a `本轮开发记录` with goal/status, changed files and decisions, test command with passed/failed/skipped counts and unverified items, migration/configuration risks, and the next 1–3 priorities with acceptance criteria.
+- Contributors do not edit the global state files `docs/CURRENT_STATE.md`, `docs/PROJECT_STATUS.md`, `docs/ROADMAP.md`, `docs/GOAL_STATE.json`, or `CHANGELOG.md` during parallel feature work, unless the assigned Issue explicitly includes one of them.
+- After merge, Codex as integration lead reconciles those global state files once, using the merged PR development record; this rule applies equally to ZCode and Codex.
 - Do not merge changes with unresolved data-loss, security, permission, or migration-safety risks. Production database changes require an explicit user-authorized Issue and a fresh verified backup.
 
 ## Current sequence
