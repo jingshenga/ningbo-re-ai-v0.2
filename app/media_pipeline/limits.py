@@ -1,7 +1,7 @@
 """Processing limits for the DXP4800 (Intel N100, 16 GB RAM): one media job at a time.
 
-Bounds are Python-side checks; ffmpeg argv itself stays literal, so every
-tunable that lands in argv is restricted to an explicit allowlist here.
+Bounds are Python-side checks. FFmpeg filter values are generated only from
+validated media duration and these fixed limits, never operator text.
 """
 from __future__ import annotations
 
@@ -66,3 +66,17 @@ KEYFRAME_INTERVAL_SECONDS = (_keyframe_raw if _keyframe_raw in ALLOWED_KEYFRAME_
 
 def interval_filter() -> str:
     return INTERVAL_FILTERS[format(KEYFRAME_INTERVAL_SECONDS, 'g')]
+
+
+def sampling_filter(duration_seconds: float) -> str:
+    """Keep short-video cadence and spread the capped samples across long videos."""
+    interval = sampling_interval(duration_seconds)
+    if interval == KEYFRAME_INTERVAL_SECONDS:
+        return interval_filter()
+    return 'fps=1/' + format(interval, '.6g') + ',scale=1280:-2'
+
+
+def sampling_interval(duration_seconds: float) -> float:
+    if duration_seconds <= MAX_KEYFRAMES * KEYFRAME_INTERVAL_SECONDS:
+        return KEYFRAME_INTERVAL_SECONDS
+    return (duration_seconds - KEYFRAME_INTERVAL_SECONDS) / (MAX_KEYFRAMES - 1)
