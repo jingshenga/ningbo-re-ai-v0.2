@@ -57,8 +57,8 @@ def analyze_listings(community_name, area_sqm, bedrooms=None,
                     WHERE a.city=c.city AND a.community_id=c.id AND a.alias=%s
                 )
             )
-            ORDER BY c.verified DESC,c.name LIMIT 1''',
-            (community_name, community_name)).fetchone()
+            ORDER BY (c.name=%s) DESC,c.verified DESC,c.name LIMIT 1''',
+            (community_name, community_name, community_name)).fetchone()
         if community is None:
             return _empty_result(community_name, area_sqm, bedrooms,
                                  area_tolerance_pct, asking_price_wan)
@@ -67,6 +67,8 @@ def analyze_listings(community_name, area_sqm, bedrooms=None,
             'p.community_id=%s',
             "l.source IN ('beike','anjuke')",
             "l.status NOT IN ('withdrawn','sold')",
+            "l.last_observed_at >= now() - interval '90 days'",
+            'l.last_observed_at <= now()',
             'ABS(p.area_sqm-%s)/%s <= %s/100',
         ]
         values = [community['id'], area_sqm, area_sqm, area_tolerance_pct]
