@@ -87,3 +87,17 @@ def test_admin_login_rejects_non_ascii_password_without_server_error(monkeypatch
     client = client_with_key(monkeypatch)
     response = client.post("/admin/login", data={"password": "错误的密码"})
     assert response.status_code == 401
+
+def test_admin_routes_are_hidden_from_openapi(monkeypatch):
+    client = client_with_key(monkeypatch)
+    schema = client.get("/openapi.json").json()
+    assert "/admin/login" not in schema["paths"]
+    assert "/admin/logout" not in schema["paths"]
+    assert "/admin/" not in schema["paths"]
+
+
+def test_logout_rejects_non_ascii_csrf_without_server_error(monkeypatch):
+    client = client_with_key(monkeypatch)
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    response = client.post("/admin/logout", data={"csrf": "錯誤"})
+    assert response.status_code == 403
