@@ -1,6 +1,8 @@
 # 视频上传后端：DXP4800隔离验收
 
-本覆盖文件用于已有的隔离项目 `rehouse-ai-uat-20261113`，不引用生产Compose目录、生产卷或生产端口。隔离PG17卷仍为 `rehouse-ai-uat-20261113-pgdata`；原API端口仍仅绑定 `127.0.0.1:18788`。新增浏览器端口默认也只绑定 `127.0.0.1:18789`；需要从指定内网电脑访问时，在NAS的权限为0600的`.env.uat`中设置 `NBRE_UAT_BIND_IP` 为NAS私有IP、`NBRE_UAT_PORT` 为独立端口、`NBRE_UAT_ALLOWED_CLIENTS` 为电脑的单个IP或CIDR。该端口只绑定所填NAS私有IP，应用按TCP socket来源地址做白名单，不信任 `X-Forwarded-For`。视频与任务清单写入该项目独立 `data/media-uploads-uat` 目录，默认UAT上限25MiB/单文件、100MiB总配额。真实部署前先核对容器标签及挂载，禁止 `down -v`。
+本覆盖文件用于已有的隔离项目 `rehouse-ai-uat-20261113`，不引用生产Compose目录、生产卷或生产端口。隔离PG17卷仍为 `rehouse-ai-uat-20261113-pgdata`；原API端口仍仅绑定 `127.0.0.1:18788`。新增浏览器端口默认也只绑定 `127.0.0.1:18789`；需要从指定内网电脑访问时，在NAS的权限为0600的`.env.uat`中设置 `NBRE_UAT_BIND_IP` 为NAS私有IP、`NBRE_UAT_PORT` 为独立端口、`NBRE_UAT_ALLOWED_CLIENTS` 为电脑的单个IP或CIDR。该端口只绑定所填NAS私有IP，应用按TCP socket来源地址做白名单，不信任 `X-Forwarded-For`。视频与任务清单写入该项目独立 `data/media-uploads-uat` 目录，默认UAT上限25MiB/单文件、100MiB总配额；另为单个串行处理任务预留50MiB临时空间。真实部署前先核对容器标签及挂载，禁止 `down -v`。
+
+此验收配置依赖PR #25提供的 `compose.uat.yml` 隔离PG17基线；两项改动合并后的运行树才可执行下列命令。PR #31的 `compose.media-upload-uat.yml` 明确选择本PR跟踪的 `Dockerfile.media-upload-uat`，其中安装FFmpeg/RapidOCR并复制 `/srv/scripts/media_upload_uat.py`。
 
 ## 更新隔离API/Worker
 
@@ -20,7 +22,7 @@ docker compose --env-file .env.uat -p rehouse-ai-uat-20261113 \
   up -d --build --no-deps api worker
 ```
 
-API/Worker使用 `Dockerfile.media-upload-uat` 中的FFmpeg、RapidOCR 1.4.4和Noto CJK字体；UAT固定单个Uvicorn worker。服务启动后运行真实OCR隔离验收：
+API/Worker使用 `Dockerfile.media-upload-uat` 中的FFmpeg、RapidOCR 1.4.4和Noto CJK字体；`compose.uat.yml`提供隔离PG17项目名及命名卷，`compose.media-upload-uat.yml`为API和Worker选择媒体运行时镜像。UAT固定单个Uvicorn worker。服务启动后运行真实OCR隔离验收：
 
 ```sh
 docker exec rehouse-ai-uat-20261113-api-1 \

@@ -151,8 +151,11 @@ def upload_video(
 def list_uploads(
         limit: int = Query(default=50, ge=1, le=100),
         manager: UploadManager = Depends(get_upload_manager)):
-    items = manager.list_jobs(limit)
-    return {'items': items, 'count': len(items)}
+    try:
+        items = manager.list_jobs(limit)
+        return {'items': items, 'count': len(items)}
+    except UploadServiceError as exc:
+        return _error(exc)
 
 
 @router.get('/{upload_id}/frames/{frame_index}')

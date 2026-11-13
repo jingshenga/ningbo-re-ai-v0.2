@@ -48,11 +48,17 @@ class UploadManager:
     """One process-local worker; job state and evidence survive API restarts."""
 
     def __init__(self, root: str | Path | None = None, *, max_file_bytes: int | None = None,
-                 quota_bytes: int | None = None, pipeline_runner=None):
+                 quota_bytes: int | None = None, processing_headroom_bytes: int | None = None,
+                 pipeline_runner=None):
         default_root = Path(os.getenv('RAW_HTML_DIR', '/data/raw-pages')).parent / 'media-uploads-uat'
         self.root = Path(root or os.getenv('NBRE_MEDIA_UPLOAD_DIR') or default_root)
         self.max_file_bytes = max_file_bytes or int(os.getenv('NBRE_MEDIA_UPLOAD_MAX_BYTES', str(1024**3)))
         self.quota_bytes = quota_bytes or int(os.getenv('NBRE_MEDIA_UPLOAD_QUOTA_BYTES', str(20 * 1024**3)))
+        self.processing_headroom_bytes = (processing_headroom_bytes if processing_headroom_bytes is not None
+                                          else int(os.getenv('NBRE_MEDIA_PROCESSING_HEADROOM_BYTES',
+                                                             str(self.max_file_bytes * 2))))
+        if self.processing_headroom_bytes < 0:
+            raise ValueError('processing headroom must be non-negative')
         self.pipeline_runner = pipeline_runner or run_pipeline
         self._jobs: dict[str, dict] = {}
         self._sha_index: dict[str, str] = {}
@@ -227,7 +233,7 @@ class UploadManager:
                         size += len(chunk)
                         if size > self.max_file_bytes:
                             raise UploadServiceError(413, 'too_large', 'uploaded file exceeds the configured limit')
-                        if usage + size > self.quota_bytes:
+                        if usage + size + self.processing_headroom_bytes > self.quota_bytes:
                             raise UploadServiceError(413, 'storage_quota_exceeded', 'upload storage quota would be exceeded')
                         if len(prefix) < 64:
                             prefix.extend(chunk[:64 - len(prefix)])
@@ -253,7 +259,7 @@ class UploadManager:
                 }
                 manifest_bytes = len(json.dumps(job, ensure_ascii=False,
                                                 separators=(',', ':')).encode('utf-8'))
-                if usage + size + manifest_bytes > self.quota_bytes:
+                if usage + size + manifest_bytes + self.processing_headroom_bytes > self.quota_bytes:
                     raise UploadServiceError(413, 'storage_quota_exceeded',
                                              'upload storage quota would be exceeded')
                 os.replace(tmp_path, final_path)
@@ -419,10 +425,7 @@ class UploadManager:
                     raise UploadServiceError(503, 'storage_unavailable', 'OCR frame evidence is unavailable')
                 target = destination / ('frame_%04d.jpg' % int(item['frame_index']))
                 if not target.exists():
-                    size = source.stat().st_size
-                    if self._storage_usage() + size > self.quota_bytes:
-                        raise UploadServiceError(503, 'storage_unavailable', 'upload storage quota is full')
-                    shutil.copyfile(source, target)
+                    os.replace(source, target)
                     os.chmod(target, 0o600)
                 url = '/api/media/uploads/%s/frames/%s' % (upload_id, item['frame_index'])
                 item['frame_path'] = url

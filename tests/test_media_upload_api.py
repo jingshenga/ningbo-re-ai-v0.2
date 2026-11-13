@@ -16,7 +16,8 @@ from app.media_upload_api import AdminSourceAllowlistMiddleware
 from app.media_pipeline.errors import MediaPipelineError
 from app.media_pipeline.models import (MediaEvidence, MediaInfo, OcrItem,
                                        OcrResult, TranscriptResult)
-from app.video_upload_service import UploadManager, get_upload_manager
+from app.video_upload_service import (UploadManager, UploadServiceError,
+                                      get_upload_manager)
 
 API_KEY = 'synthetic-upload-api-key'
 VALID_MP4 = b'\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isom'
@@ -64,9 +65,11 @@ def fake_pipeline(path, *, asr_engine, ocr_engine, work_dir, keep_work,
 
 @contextmanager
 def upload_client(tmp_path, monkeypatch, runner=fake_pipeline, *, maximum=1024,
-                  quota=4096):
+                  quota=4096, processing_headroom=None):
     manager = UploadManager(tmp_path / 'uploads', max_file_bytes=maximum,
-                            quota_bytes=quota, pipeline_runner=runner)
+                            quota_bytes=quota,
+                            processing_headroom_bytes=processing_headroom,
+                            pipeline_runner=runner)
     monkeypatch.setattr(main, 'APP_API_KEY', API_KEY)
     monkeypatch.setattr(main, 'start_upload_worker', manager.start)
     monkeypatch.setattr(main, 'stop_upload_worker', manager.stop)
@@ -163,6 +166,27 @@ def test_storage_quota_is_checked_before_persisting_upload(monkeypatch, tmp_path
         assert response.status_code == 413
         assert response.json()['error']['code'] == 'storage_quota_exceeded'
         assert manager.list_jobs(10) == []
+
+
+def test_storage_quota_reserves_pipeline_headroom(monkeypatch, tmp_path):
+    with upload_client(tmp_path, monkeypatch, maximum=64, quota=2048,
+                       processing_headroom=2048) as (client, manager):
+        response = submit(client)
+        assert response.status_code == 413
+        assert response.json()['error']['code'] == 'storage_quota_exceeded'
+        assert manager.list_jobs(10) == []
+        assert list(manager.files_dir.glob('.*.part')) == []
+
+
+def test_upload_list_translates_storage_failure_to_structured_503(monkeypatch, tmp_path):
+    with upload_client(tmp_path, monkeypatch) as (client, manager):
+        def fail_listing(_limit):
+            raise UploadServiceError(503, 'storage_unavailable', 'upload storage is unavailable')
+
+        monkeypatch.setattr(manager, 'list_jobs', fail_listing)
+        response = client.get('/api/media/uploads', headers={'X-API-Key': API_KEY})
+        assert response.status_code == 503
+        assert response.json()['error']['code'] == 'storage_unavailable'
 
 
 def test_http_body_limit_rejects_large_request_before_multipart_parsing(monkeypatch, tmp_path):
