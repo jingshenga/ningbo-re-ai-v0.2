@@ -16,6 +16,7 @@ def client_with_key(monkeypatch, **client_kwargs):
     monkeypatch.setattr(admin_ui.services, "listings", lambda **kwargs: [])
     monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: [])
     monkeypatch.setattr(admin_ui.services, "list_videos", lambda **kwargs: [])
+    client_kwargs.setdefault("client", ("127.0.0.1", 12345))
     return TestClient(app, **client_kwargs)
 
 
