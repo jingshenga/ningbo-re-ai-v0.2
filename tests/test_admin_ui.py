@@ -14,7 +14,7 @@ TEST_API_KEY = secrets.token_urlsafe(32)
 
 
 def client_with_key(monkeypatch, **client_kwargs):
-    monkeypatch.setattr(admin_ui, "APP_API_KEY", "TEST_API_KEY")
+    monkeypatch.setattr(admin_ui, "APP_API_KEY", TEST_API_KEY)
     monkeypatch.setattr(admin_ui, "_recently_created_listings", lambda: [])
     monkeypatch.setattr(admin_ui, "_summary", lambda: {
         "listing_count": 0, "pending_count": 0, "new_count": 0, "recent_price_drop_count": 0,
@@ -34,28 +34,28 @@ def test_admin_dashboard_requires_signed_session_and_hides_api_key(monkeypatch):
     assert client.get("/admin/").status_code == 401
     login = client.get("/admin/login")
     assert login.status_code == 200
-    assert "TEST_API_KEY" not in login.text
+    assert TEST_API_KEY not in login.text
     assert "<script" not in login.text
 
-    response = client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    response = client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     assert response.status_code == 303
     cookie = response.headers["set-cookie"]
     assert "HttpOnly" in cookie
     assert "SameSite=strict" in cookie
-    assert "TEST_API_KEY" not in cookie
+    assert TEST_API_KEY not in cookie
 
     dashboard = client.get("/admin/")
     assert dashboard.status_code == 200
     assert "尚无入库房源" in dashboard.text
     assert "尚未配置 DTK 服务" in dashboard.text
-    assert "TEST_API_KEY" not in dashboard.text
+    assert TEST_API_KEY not in dashboard.text
     assert "script-src &#x27;none&#x27;" in dashboard.headers["content-security-policy"] or "script-src 'none'" in dashboard.headers["content-security-policy"]
     assert dashboard.headers["cache-control"] == "no-store"
 
 
 def test_admin_logout_requires_csrf_token(monkeypatch):
     client = client_with_key(monkeypatch)
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     denied = client.post("/admin/logout", data={})
     assert denied.status_code == 403
@@ -80,7 +80,7 @@ def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch)
     monkeypatch.setattr(admin_ui, "ENABLE_ONLINE_COLLECTION", True)
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: [{}] * 1200)
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     dashboard = client.get("/admin/")
     assert dashboard.status_code == 200
@@ -103,7 +103,7 @@ def test_admin_routes_are_hidden_from_openapi(monkeypatch):
 
 def test_logout_rejects_non_ascii_csrf_without_server_error(monkeypatch):
     client = client_with_key(monkeypatch)
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     response = client.post("/admin/logout", data={"csrf": "錯誤"})
     assert response.status_code == 403
 
@@ -111,7 +111,7 @@ def test_dashboard_does_not_run_full_opportunity_scan(monkeypatch):
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui.services, "opportunities",
                         lambda **kwargs: (_ for _ in ()).throw(AssertionError("expensive scan")))
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     dashboard = client.get("/admin/")
     assert dashboard.status_code == 200
@@ -121,7 +121,7 @@ def test_admin_listing_and_candidate_pages_render_after_login(monkeypatch):
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
     monkeypatch.setattr(admin_ui.collection_service, "candidates", lambda **kwargs: [])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     listings = client.get("/admin/listings")
     candidates = client.get("/admin/candidates")
@@ -145,7 +145,7 @@ def test_candidate_correction_uses_csrf_and_existing_review_service(monkeypatch)
     received = []
     monkeypatch.setattr(admin_ui.collection_service, "correct_candidate",
                         lambda candidate_id, payload: received.append((candidate_id, payload.model_dump(exclude_unset=True))))
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get(f"/admin/candidates/{candidate_id}")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
@@ -163,7 +163,7 @@ def test_html_sample_import_creates_candidate_only(monkeypatch):
     received = []
     monkeypatch.setattr(admin_ui.collection_service, "stage_manual_page",
                         lambda payload: (received.append(payload), {"candidate": {"id": candidate_id}})[1])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get("/admin/import")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
@@ -184,7 +184,7 @@ def test_candidate_review_posts_existing_approval_service(monkeypatch):
     received = []
     monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
                         lambda candidate_id, decision, note: received.append((candidate_id, decision, note)))
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get("/admin/")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
@@ -201,7 +201,7 @@ def test_original_html_evidence_is_rendered_as_escaped_text(monkeypatch):
     monkeypatch.setattr(admin_ui, "_candidate_detail", lambda candidate_id: row)
     monkeypatch.setattr(admin_ui, "_candidate_html_evidence",
                         lambda row: "<script>alert(1)</script>")
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     response = client.get(f"/admin/candidates/{candidate_id}/evidence")
     assert response.status_code == 200
@@ -210,7 +210,7 @@ def test_original_html_evidence_is_rendered_as_escaped_text(monkeypatch):
 
 def test_dashboard_links_to_all_admin_workflows(monkeypatch):
     client = client_with_key(monkeypatch)
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     page = client.get("/admin/")
     assert "/admin/listings" in page.text
@@ -221,7 +221,7 @@ def test_dashboard_links_to_all_admin_workflows(monkeypatch):
 def test_listing_filter_accepts_blank_optional_numbers(monkeypatch):
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     response = client.get("/admin/listings?min_area_sqm=&max_area_sqm=&min_price_wan=&max_price_wan=&min_bedrooms=")
     assert response.status_code == 200
@@ -232,7 +232,7 @@ def test_blank_candidate_source_means_all_sources(monkeypatch):
     calls = []
     monkeypatch.setattr(admin_ui.collection_service, "candidates",
                         lambda **kwargs: (calls.append(kwargs), [])[1])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     response = client.get("/admin/candidates?status=pending&source=")
     assert response.status_code == 200
@@ -244,7 +244,7 @@ def test_review_accepts_maximum_length_chinese_note(monkeypatch):
     received = []
     monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
                         lambda candidate_id, decision, note: received.append(note))
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get("/admin/")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
     note = "审" * 1000
@@ -263,7 +263,7 @@ def test_review_error_dictionary_is_url_encoded(monkeypatch):
     monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
                         lambda *args: (_ for _ in ()).throw(HTTPException(
                             status_code=422, detail={"missing": "area_sqm", "说明": "需要补充"})))
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get("/admin/")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
@@ -278,7 +278,7 @@ def test_review_error_dictionary_is_url_encoded(monkeypatch):
 def test_listing_numeric_filters_reject_nonfinite_and_out_of_range(monkeypatch):
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     for value in ("NaN", "Infinity", "1e99999999999", "20001"):
         response = client.get(f"/admin/listings?min_area_sqm={value}")
@@ -298,7 +298,7 @@ def test_candidate_evidence_rejects_content_hash_mismatch(tmp_path, monkeypatch)
 def test_candidate_filters_keep_selected_status_and_source(monkeypatch):
     client = client_with_key(monkeypatch)
     monkeypatch.setattr(admin_ui.collection_service, "candidates", lambda **kwargs: [])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     page = client.get("/admin/candidates?status=approved&source=anjuke")
     assert page.status_code == 200
@@ -312,7 +312,7 @@ def test_saved_search_creation_uses_existing_model_and_service(monkeypatch):
     monkeypatch.setattr(admin_ui.services, "create_saved_search",
                         lambda payload: (created.append(payload), {"id": search_id})[1])
     monkeypatch.setattr(admin_ui.services, "all_saved_searches", lambda: [])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
     page = client.get("/admin/searches")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
@@ -339,7 +339,7 @@ def test_saved_search_matches_show_existing_match_reasons(monkeypatch):
             "listing_url": "https://example.test/listing/1", "last_observed_at": "now",
         }],
     })
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     page = client.get(f"/admin/searches/{search_id}/matches")
     assert page.status_code == 200
@@ -369,7 +369,7 @@ def test_opportunity_page_selects_window_and_shows_price_evidence(monkeypatch):
              "source": "anjuke", "signal_reasons": ["同小区跨平台价差，待核实"]},
         ],
     )[1])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     page = client.get("/admin/opportunities?days=7")
     assert page.status_code == 200
@@ -400,7 +400,7 @@ def test_monitoring_page_labels_unconfigured_dtk_and_manual_accounts(monkeypatch
         "published_at": "2026-01-01", "source_url": "https://example.test/video",
         "extracted_fields": {"community_mentions": ["合成小区"]},
     }])
-    client.post("/admin/login", data={"password": "TEST_API_KEY"}, follow_redirects=False)
+    client.post("/admin/login", data={"password": TEST_API_KEY}, follow_redirects=False)
 
     page = client.get("/admin/monitoring")
     assert page.status_code == 200
