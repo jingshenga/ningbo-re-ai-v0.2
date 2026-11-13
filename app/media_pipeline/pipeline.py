@@ -7,9 +7,12 @@ and mock output is always labeled as such.
 """
 from __future__ import annotations
 
+import fcntl
+import os
 import shutil
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.extractor import extract_hints
@@ -18,17 +21,42 @@ from app.media_pipeline.errors import MediaPipelineError
 from app.media_pipeline.models import (KeyFrame, MediaEvidence, MediaInfo,
                                        OcrResult, PipelineRun, TranscriptResult)
 
+PIPELINE_LOCK_PATH = Path(tempfile.gettempdir()) / 'nbre-media-pipeline.lock'
+
+
+@contextmanager
+def _exclusive_pipeline_lock():
+    """Fail fast when another media job is already using NAS CPU/memory."""
+    fd = None
+    try:
+        fd = os.open(PIPELINE_LOCK_PATH,
+                     os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        if fd is not None:
+            os.close(fd)
+        raise MediaPipelineError('media_busy', 'another media pipeline job is running') from None
+    except OSError:
+        if fd is not None:
+            os.close(fd)
+        raise MediaPipelineError('media_lock_failed', 'media pipeline lock is unavailable') from None
+    try:
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
 
 def _empty_transcript(status: str, error: str) -> TranscriptResult:
     return TranscriptResult(status=status, engine='none', error=error)
 
 
-def run_pipeline(path: str | Path, *,
-                 asr_engine=None,
-                 ocr_engine=None,
-                 work_dir: str | Path | None = None,
-                 keep_work: bool = False,
-                 known_community_names: list[str] | None = None) -> MediaEvidence:
+def _run_pipeline_locked(path: str | Path, *,
+                         asr_engine=None,
+                         ocr_engine=None,
+                         work_dir: str | Path | None = None,
+                         keep_work: bool = False,
+                         known_community_names: list[str] | None = None) -> MediaEvidence:
     """Run the full local chain: validate → probe → audio → frames → ASR/OCR → hints.
 
     `work_dir`, when given, must be a new path; it is created with mode 0700.
@@ -86,7 +114,7 @@ def run_pipeline(path: str | Path, *,
         frames: list[KeyFrame] = []
         ocr: OcrResult | None = None
         try:
-            frames = ffmpeg_tools.extract_keyframes(work)
+            frames = ffmpeg_tools.extract_keyframes(work, media.duration_seconds)
         except MediaPipelineError as exc:
             ocr = OcrResult(status='failed', error='frame extraction failed: ' + exc.kind)
             warnings.append(ocr.error)
@@ -122,3 +150,18 @@ def run_pipeline(path: str | Path, *,
     finally:
         if not keep_work:
             shutil.rmtree(work, ignore_errors=True)
+
+
+def run_pipeline(path: str | Path, *,
+                 asr_engine=None,
+                 ocr_engine=None,
+                 work_dir: str | Path | None = None,
+                 keep_work: bool = False,
+                 known_community_names: list[str] | None = None) -> MediaEvidence:
+    """Serialize media processing across CLI invocations in this runtime."""
+    with _exclusive_pipeline_lock():
+        return _run_pipeline_locked(
+            path, asr_engine=asr_engine, ocr_engine=ocr_engine,
+            work_dir=work_dir, keep_work=keep_work,
+            known_community_names=known_community_names,
+        )
