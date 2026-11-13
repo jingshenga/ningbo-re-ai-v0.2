@@ -1,0 +1,9 @@
+services:
+  api:
+    environment:
+      NBRE_MEDIA_UPLOAD_DIR: /data/media-uploads-uat
+      NBRE_MEDIA_UPLOAD_MAX_BYTES: "26214400"
+      NBRE_MEDIA_UPLOAD_QUOTA_BYTES: "104857600"
+      NBRE_MEDIA_OCR_ENGINE: rapidocr
+      NBRE_MEDIA_ASR_ENGINE: auto
+      NBRE_MEDIA_KNOWN_COMMUNITIES: 东湖花园

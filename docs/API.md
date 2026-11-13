@@ -110,6 +110,24 @@ HTML正文上限为1,000,000 UTF-8字节；请求JSON正文最大6,100,000字节
 
 只有取得对应的真实权限依据、核实使用条款/robots/使用范围且程序全局开关也显式打开后，才可能尝试获取。**切忌将 `approved` 当作一种绕过平台限制的操作。**
 
+## 视频上传与OCR任务（Issue #30）
+
+以下接口仅接收运营人员提供且有权处理的本地视频；所有请求均需 `X-API-Key`。上传文件和JSON任务清单写在 `NBRE_MEDIA_UPLOAD_DIR`（默认 `/data/media-uploads-uat`）下，不使用PostgreSQL、不调用 `videos`/挂牌/价格历史表。上传HTTP请求只做校验与落盘，OCR由API进程内的单任务队列执行；运行服务须保持单个Uvicorn worker。默认单文件最大1GiB，存储配额20GiB，可用 `NBRE_MEDIA_UPLOAD_MAX_BYTES` 与 `NBRE_MEDIA_UPLOAD_QUOTA_BYTES` 调低。ASGI接收层会在multipart解析/临时落盘前把整个请求体限制为单文件上限+128KiB，避免超大或无Content-Length请求先占满临时空间。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/media/uploads` | `multipart/form-data`：`file`、`source_type`（`operator_local`/`authorized_author`/`licensed_platform`）、`permission_note`（必填，10–500字符）；可选 `title`（最多200字符）、`description`（最多2000字符）。返回202与 `upload_id`、`queued`、服务端生成的 `storage_name`、SHA-256、大小和 `poll_url`。 |
+| GET | `/api/media/uploads?limit=50` | 最新任务，`limit` 为1–100。 |
+| GET | `/api/media/uploads/{upload_id}` | 状态、授权说明、尝试次数、失败码及完成后的 `MediaEvidence.as_dict()` 结果。 |
+| POST | `/api/media/uploads/{upload_id}/retry` | 仅 `failed` / `failed_unavailable_ocr` 可重试；仅重排原文件，不重复上传。 |
+| GET | `/api/media/uploads/{upload_id}/frames/{frame_index}` | 带 `X-API-Key` 返回任务保存的JPEG帧证据。网页应由自身已登录的服务端代理此接口，不在浏览器暴露API key。 |
+
+任务状态为 `queued`、`processing`、`completed`、`failed`、`failed_unavailable_ocr`。队列/状态元数据在进程重启后从隔离目录恢复；处理中任务重启后重新入队。OCR不可用不会伪报成功。错误统一为 `{ "error": { "code", "detail" } }`，包括 `file_required`、`permission_note_required`、`invalid_source_type`、`unsupported_format`、`invalid_media`、`too_large`、`storage_quota_exceeded`、`duplicate_sha256`、`upload_not_found`、`not_retryable`、`frame_not_found`、`ffmpeg_missing`、`ffmpeg_failed`、`ffmpeg_timeout`、`ocr_unavailable`、`asr_unavailable`、`storage_unavailable`、`internal_error`；认证失败沿用401。超限/配额不足为413，重复SHA及不可重试为409，字段/格式错误为400。
+
+允许扩展名为 `.mp4`、`.mov`、`.m4v`、`.mkv`、`.webm`；MP4/MOV类检查 `ftyp` 文件签名，MKV/WebM检查EBML签名，并由真实 `ffprobe` 在队列处理阶段二次验证。原文件名不用于存储路径；文件使用随机UUID名并以0600权限保存，目录为0700。上传完成前按块计数和计算SHA-256；单文件上限与目录总配额任一超出即删除半截文件。相同SHA-256再次上传返回409和原任务ID。
+
+成功结果中 `hints.confidence_status` 固定为 `not_calibrated`；口播/字幕价格只是待核实线索，禁止写入正式挂牌、成交价或 `price_history`。工作台服务端可在同一API容器中用 `MEDIA_UPLOAD_API_BASE=http://127.0.0.1:8000` 调用接口；其浏览器侧保持现有签名会话与CSRF边界。
+
 ## 重要限制
 - 通用HTML解析器尚未在真实贝壳/安居客宁波页面做字段准确率验收。
 - 条件单兼容旧字段 `district`、`community_name`；新字段 `districts` 是硬性区域范围，`preferred_communities` 只作为提醒偏好标记，`excluded_communities` 为硬性排除，`max_listing_age_days` 按挂牌最近观察时间过滤。
