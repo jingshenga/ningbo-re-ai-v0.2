@@ -104,6 +104,8 @@ def _summary():
 
 
 def _private_network_only(request):
+    if any(name in request.headers for name in ("forwarded", "x-forwarded-for", "x-real-ip")):
+        return False
     host = request.client.host if request.client else ""
     try:
         address = ipaddress.ip_address(host)
@@ -176,7 +178,7 @@ def admin_dashboard(request: Request):
     sources = collection_service.health_metrics()
     accounts = services.all_accounts()
     recent_listings = services.listings(limit=6)
-    opportunities = services.opportunities(days=30, limit=100)
+    opportunities = services.opportunities(days=30, limit=1200)
     videos = services.list_videos(limit=4)
     cookie = request.cookies.get(COOKIE_NAME, "")
     esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
