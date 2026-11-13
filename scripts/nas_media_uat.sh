@@ -128,14 +128,31 @@ check_runtime() {
   dc exec -T api ffmpeg -hide_banner -version | head -n 1
   dc exec -T api python -c \
     'from rapidocr_onnxruntime import RapidOCR; engine=RapidOCR(); print("RapidOCR模型初始化成功:", type(engine).__name__)'
-  dc exec -T db psql -v ON_ERROR_STOP=1 -U rehouse_uat -d rehouse_uat -c \
-    "DO \\\$uat\\\$ BEGIN \\
-      IF current_setting('server_version_num')::int < 170000 THEN RAISE EXCEPTION 'PostgreSQL 17 required'; END IF; \\
-      IF to_regclass('public.collection_discovery_states') IS NULL THEN RAISE EXCEPTION 'migration 006 signature missing'; END IF; \\
-      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='collection_discovery_staged_ids' AND column_name='last_seen_sweep') THEN RAISE EXCEPTION 'migration 012 signature missing'; END IF; \\
-      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='monitored_accounts' AND column_name='history_backfill_cursor') THEN RAISE EXCEPTION 'migration 013 signature missing'; END IF; \\
-      IF to_regclass('public.collection_discovery_detail_queue') IS NULL THEN RAISE EXCEPTION 'migration 014 signature missing'; END IF; \\
-    END \\\$uat\\\$;"
+  dc exec -T db psql -v ON_ERROR_STOP=1 -U rehouse_uat -d rehouse_uat <<'SQL'
+DO $uat$
+BEGIN
+  IF current_setting('server_version_num')::int < 170000 THEN
+    RAISE EXCEPTION 'PostgreSQL 17 required';
+  END IF;
+  IF to_regclass('public.collection_discovery_states') IS NULL THEN
+    RAISE EXCEPTION 'migration 006 signature missing';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='collection_discovery_staged_ids'
+        AND column_name='last_seen_sweep') THEN
+    RAISE EXCEPTION 'migration 012 signature missing';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='monitored_accounts'
+        AND column_name='history_backfill_cursor') THEN
+    RAISE EXCEPTION 'migration 013 signature missing';
+  END IF;
+  IF to_regclass('public.collection_discovery_detail_queue') IS NULL THEN
+    RAISE EXCEPTION 'migration 014 signature missing';
+  END IF;
+END
+$uat$;
+SQL
   run_video_roundtrip
   run_failure_recovery_check
   echo "隔离 Docker UAT 完成；合成数据只在 rehouse-ai-uat-20261113 项目及其专属卷内。"
