@@ -25,6 +25,7 @@ cleanup() {
   set +e
   if [[ -f "$compose_file" && -f "$env_file" ]]; then
     docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" ps >"$artifact_dir/containers.txt" 2>&1
+    docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" logs --no-color --tail=200 api >"$artifact_dir/api.log" 2>&1
     docker compose -p "$project" --env-file "$env_file" -f "$compose_file" -f "$override_file" down --volumes --remove-orphans >/dev/null 2>&1
   fi
   docker image rm -f "$browser_image" >/dev/null 2>&1
