@@ -50,17 +50,41 @@ def inspect_schema(conn):
                FROM information_schema.columns
                WHERE table_schema = current_schema()"""
         ).fetchall()
+        actual = {}
+        for table_name, column_name in rows:
+            actual.setdefault(table_name, set()).add(column_name)
+        prerequisites = {
+            "collection_discovery_states": {"target_id", "sweep_number", "sweep_seen_listing_ids"},
+            "collection_targets": {"id", "source"},
+            "collection_listing_observations": {
+                "target_id", "source", "source_listing_id", "last_seen_sweep",
+            },
+        }
+        if all(columns <= actual.get(table, set()) for table, columns in prerequisites.items()):
+            unbacked_sweep_ids = conn.execute(
+                """SELECT count(*)
+                   FROM collection_discovery_states AS state
+                   JOIN collection_targets AS target ON target.id = state.target_id
+                   CROSS JOIN LATERAL jsonb_array_elements_text(
+                       state.sweep_seen_listing_ids
+                   ) AS item(source_listing_id)
+                   LEFT JOIN collection_listing_observations AS observation
+                     ON observation.target_id = state.target_id
+                    AND observation.source = target.source
+                    AND observation.source_listing_id = item.source_listing_id
+                    AND observation.last_seen_sweep = state.sweep_number
+                   WHERE observation.target_id IS NULL"""
+            ).fetchone()[0]
+        else:
+            unbacked_sweep_ids = None
 
-    actual = {}
-    for table_name, column_name in rows:
-        actual.setdefault(table_name, set()).add(column_name)
     missing_tables = sorted(set(EXPECTED_COLUMNS) - set(actual))
     missing_columns = sorted(
         f"{table}.{column}"
         for table, columns in EXPECTED_COLUMNS.items()
         for column in columns - actual.get(table, set())
     )
-    return schema, missing_tables, missing_columns
+    return schema, missing_tables, missing_columns, unbacked_sweep_ids
 
 
 def main():
@@ -80,19 +104,23 @@ def main():
 
     try:
         with psycopg.connect(dsn) as conn:
-            schema, missing_tables, missing_columns = inspect_schema(conn)
+            schema, missing_tables, missing_columns, unbacked_sweep_ids = inspect_schema(conn)
     except psycopg.Error:
         print("schema check failed; connection details redacted", file=sys.stderr)
         return 2
 
     print(f"Read-only schema check: database={database}, schema={schema}")
-    if missing_tables or missing_columns:
+    if unbacked_sweep_ids is not None:
+        print(f"Unbacked active-sweep IDs (review before migration 012): {unbacked_sweep_ids}")
+    if missing_tables or missing_columns or unbacked_sweep_ids:
         if missing_tables:
             print("Missing tables: " + ", ".join(missing_tables))
         if missing_columns:
             print("Missing columns: " + ", ".join(missing_columns))
         return 1
     print("Migration 006-014 signature objects are present.")
+    if unbacked_sweep_ids is None:
+        print("Sweep-ID consistency check unavailable until migrations 006-008 are present.")
     return 0
 
 
