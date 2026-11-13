@@ -1759,6 +1759,44 @@ def test_original_total_price_yields_current_total_price(source, source_url):
             result.fields['field_evidence']['asking_price_wan']['mentions']] == ['300']
 
 
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('exact_price_with_context', [
+    '总价：300万 每月还贷1万元',
+    '总价：300万（每年物业费2000元）',
+    '总价：300万 每年物业费2000元',
+])
+def test_exact_price_survives_separate_period_context(
+        source, source_url, exact_price_with_context):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{exact_price_with_context}</main></body></html>')
+
+    assert result.fields['asking_price_wan'] == 300
+    assert 'missing_asking_price_wan' not in result.warnings
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('periodic_price', [
+    '总价：3.6万/年', '总价：3.6万／年', '总价：3.6万元/月', '总价：3.6万每月',
+    '挂牌价：0.3万/天', '出售总价：0.9万/周',
+])
+def test_tight_periodic_price_stays_excluded(source, source_url, periodic_price):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{periodic_price}</main></body></html>')
+
+    assert result.fields['asking_price_wan'] is None
+    assert 'missing_asking_price_wan' in result.warnings
+
+
 @pytest.mark.parametrize('qualified_area', ['套内 面积', '使用 建筑面积'])
 def test_qualified_area_with_collapsed_whitespace_is_not_a_second_listing_area(qualified_area):
     result = parse_listing_html(
