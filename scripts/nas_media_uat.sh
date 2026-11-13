@@ -137,25 +137,21 @@ check_runtime() {
   dc exec -T db psql -v ON_ERROR_STOP=1 -U rehouse_uat -d rehouse_uat <<'SQL'
 DO $uat$
 BEGIN
-  IF current_setting('server_version_num')::int < 170000 THEN
-    RAISE EXCEPTION 'PostgreSQL 17 required';
-  END IF;
-  IF to_regclass('public.collection_discovery_states') IS NULL THEN
-    RAISE EXCEPTION 'migration 006 signature missing';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='collection_discovery_staged_ids'
-        AND column_name='last_seen_sweep') THEN
-    RAISE EXCEPTION 'migration 012 signature missing';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='monitored_accounts'
-        AND column_name='history_backfill_cursor') THEN
-    RAISE EXCEPTION 'migration 013 signature missing';
-  END IF;
-  IF to_regclass('public.collection_discovery_detail_queue') IS NULL THEN
-    RAISE EXCEPTION 'migration 014 signature missing';
-  END IF;
+  IF current_setting('server_version_num')::int < 170000 THEN RAISE EXCEPTION 'PostgreSQL 17 required'; END IF;
+  IF to_regclass('public.videos') IS NULL THEN RAISE EXCEPTION 'migration 001 signature missing'; END IF;
+  IF to_regclass('public.collection_runs') IS NULL THEN RAISE EXCEPTION 'migration 002 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='idx_collection_candidates_source_review') THEN RAISE EXCEPTION 'migration 003 signature missing'; END IF;
+  IF to_regclass('public.collection_health_metrics') IS NULL THEN RAISE EXCEPTION 'migration 004 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='saved_searches' AND column_name='max_listing_age_days') THEN RAISE EXCEPTION 'migration 005 signature missing'; END IF;
+  IF to_regclass('public.collection_discovery_states') IS NULL THEN RAISE EXCEPTION 'migration 006 signature missing'; END IF;
+  IF to_regclass('public.collection_listing_observations') IS NULL THEN RAISE EXCEPTION 'migration 007 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='collection_discovery_states' AND column_name='sweep_number') THEN RAISE EXCEPTION 'migration 008 signature missing'; END IF;
+  IF to_regclass('public.collection_listing_reviews') IS NULL THEN RAISE EXCEPTION 'migration 009 signature missing'; END IF;
+  IF to_regclass('public.collection_parse_attempts') IS NULL THEN RAISE EXCEPTION 'migration 010 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='collection_parse_attempts_no_truncate' AND NOT tgisinternal) THEN RAISE EXCEPTION 'migration 011 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='collection_discovery_staged_ids' AND column_name='last_seen_sweep') THEN RAISE EXCEPTION 'migration 012 signature missing'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='monitored_accounts' AND column_name='history_backfill_cursor') THEN RAISE EXCEPTION 'migration 013 signature missing'; END IF;
+  IF to_regclass('public.collection_discovery_detail_queue') IS NULL THEN RAISE EXCEPTION 'migration 014 signature missing'; END IF;
 END
 $uat$;
 SQL
