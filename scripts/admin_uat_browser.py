@@ -210,7 +210,7 @@ def run():
         assert "尚无导入视频" in monitor
         record("监控状态", "无DTK时明确标记未配置，账号和视频空状态如实显示", "monitoring.png")
 
-        page.locator("form[action='/admin/logout'] input[name='csrf']").wait_for()
+        page.locator("form[action='/admin/logout'] input[name='csrf']").wait_for(state="attached")
         page.locator("form[action='/admin/logout'] button").click()
         assert urlparse(page.url).path == "/admin/login"
         page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
