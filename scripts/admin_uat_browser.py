@@ -46,7 +46,14 @@ def import_candidate(html_text, label):
     form.locator("input[name='note']").fill("自动化验收合成数据")
     form.locator("textarea[name='html']").fill(html_text)
     form.get_by_role("button", name="解析并创建待审核候选").click()
-    page.get_by_role("heading", name="候选详情").wait_for()
+    try:
+        page.get_by_role("heading", name="候选详情").wait_for()
+    except Exception as exc:
+        page.screenshot(path=str(ARTIFACTS / (label + "-import-error.png")), full_page=True)
+        raise AssertionError(
+            f"HTML import did not reach candidate detail: url={page.url!r}, "
+            f"body={page.locator('body').inner_text()[:1000]!r}"
+        ) from exc
     assert "样本已解析并进入待审核" in page.locator("body").inner_text()
     assert "pending" in page.locator("body").inner_text()
     candidate_id = urlparse(page.url).path.split("/")[-1]
