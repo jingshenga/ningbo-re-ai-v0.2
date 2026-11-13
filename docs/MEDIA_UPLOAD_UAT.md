@@ -20,7 +20,7 @@ docker compose --env-file .env.uat -p rehouse-ai-uat-20261113 \
   up -d --build --no-deps api worker
 ```
 
-API容器使用 `Dockerfile.uat-media` 中的FFmpeg与RapidOCR 1.4.4；UAT固定单个Uvicorn worker。服务启动后运行真实OCR隔离验收：
+API/Worker使用 `Dockerfile.media-upload-uat` 中的FFmpeg、RapidOCR 1.4.4和Noto CJK字体；UAT固定单个Uvicorn worker。服务启动后运行真实OCR隔离验收：
 
 ```sh
 docker exec rehouse-ai-uat-20261113-api-1 \

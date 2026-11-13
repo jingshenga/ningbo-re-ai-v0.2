@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates ffmpeg fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /srv
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir rapidocr_onnxruntime==1.4.4 \
+    && useradd -r -u 10001 appuser
+RUN mkdir -p /data && chown 10001 /data && chmod 700 /data
+COPY app ./app
+COPY scripts ./scripts
+USER appuser
+EXPOSE 8000
