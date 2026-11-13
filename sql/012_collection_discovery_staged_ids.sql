@@ -13,14 +13,14 @@ ALTER TABLE collection_discovery_staged_ids
     CHECK (last_seen_sweep IS NULL OR last_seen_sweep >= 0);
 
 INSERT INTO collection_discovery_staged_ids (target_id, source_listing_id)
-SELECT state.target_id, item.source_listing_id
+SELECT DISTINCT state.target_id, item.source_listing_id
 FROM collection_discovery_states state
 CROSS JOIN LATERAL jsonb_array_elements_text(state.seen_listing_ids) AS item(source_listing_id)
 ON CONFLICT (target_id, source_listing_id) DO NOTHING;
 
 INSERT INTO collection_discovery_staged_ids
   (target_id, source_listing_id, last_seen_sweep)
-SELECT state.target_id, item.source_listing_id, state.sweep_number
+SELECT DISTINCT state.target_id, item.source_listing_id, state.sweep_number
 FROM collection_discovery_states state
 CROSS JOIN LATERAL jsonb_array_elements_text(state.sweep_seen_listing_ids)
   AS item(source_listing_id)
