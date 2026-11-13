@@ -98,16 +98,14 @@ def run():
         page.set_default_timeout(10000)
 
         landing_response = page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
-        landing_path = urlparse(page.url).path
-        assert landing_path == "/admin/login", (
-            f"Unauthenticated dashboard did not redirect to login: "
-            f"path={landing_path!r}, status={landing_response.status if landing_response else None}, "
-            f"body={page.locator('body').inner_text()[:500]!r}"
-        )
+        assert landing_response and landing_response.status == 401
+        assert "Admin login required" in page.locator("body").inner_text()
+        page.goto(BASE_URL + "/admin/login", wait_until="domcontentloaded")
+        page.get_by_role("heading", name="宁波房产工作台").wait_for()
         page.get_by_label("APP_API_KEY").fill("invalid-uat-key")
         page.get_by_role("button", name="登录").click()
         assert "API Key 不匹配" in page.locator("body").inner_text()
-        record("未登录保护与错误提示", "未登录跳转登录；错误凭据被拒绝并显示提示", "login-error.png")
+        record("未登录保护与错误提示", "受保护首页未登录返回401；错误凭据被拒绝并显示提示", "login-error.png")
 
         page.get_by_role("link", name="返回登录").click()
         page.get_by_label("APP_API_KEY").fill(API_KEY)
