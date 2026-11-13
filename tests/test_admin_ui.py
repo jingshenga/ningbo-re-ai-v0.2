@@ -1,4 +1,5 @@
 import re
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -138,17 +139,17 @@ def test_candidate_correction_uses_csrf_and_existing_review_service(monkeypatch)
     })
     received = []
     monkeypatch.setattr(admin_ui.collection_service, "correct_candidate",
-                        lambda candidate_id, payload: received.append((candidate_id, payload.title)))
+                        lambda candidate_id, payload: received.append((candidate_id, payload.model_dump(exclude_unset=True))))
     client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
     page = client.get(f"/admin/candidates/{candidate_id}")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
 
     response = client.post(f"/admin/candidates/{candidate_id}", data={
-        "csrf": csrf, "action": "correct", "title": "人工核验标题",
-        "review_note": "已对照原始页面",
+        "csrf": csrf, "action": "correct", "title": "人工核验标题", "correct_title": "1",
+        "district": "", "correct_district": "1", "review_note": "已对照原始页面",
     }, follow_redirects=False)
     assert response.status_code == 303
-    assert received == [(candidate_id, "人工核验标题")]
+    assert received == [(candidate_id, {"title": "人工核验标题", "district": None, "review_note": "已对照原始页面"})]
 
 
 def test_html_sample_import_creates_candidate_only(monkeypatch):
@@ -248,3 +249,24 @@ def test_review_accepts_maximum_length_chinese_note(monkeypatch):
     }, follow_redirects=False)
     assert response.status_code == 303
     assert received == [note]
+
+def test_review_error_dictionary_is_url_encoded(monkeypatch):
+    from fastapi import HTTPException
+
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
+                        lambda *args: (_ for _ in ()).throw(HTTPException(
+                            status_code=422, detail={"missing": "area_sqm", "说明": "需要补充"})))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post(f"/admin/candidates/{candidate_id}/review", data={
+        "csrf": csrf, "decision": "approve", "review_note": "审核字段和来源证据完整",
+    }, follow_redirects=False)
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert response.status_code == 303
+    assert "area_sqm" in query["message"][0]
+    assert "需要补充" in query["message"][0]
+
