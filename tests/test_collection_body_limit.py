@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -22,9 +24,10 @@ def test_saved_html_route_bounds_streamed_request_body(monkeypatch):
 
 
 def test_saved_html_route_replays_bounded_body_to_fastapi_validation(monkeypatch):
-    monkeypatch.setattr('app.main.APP_API_KEY', 'test-api-key')
+    test_api_key = secrets.token_urlsafe(32)
+    monkeypatch.setattr("app.main.APP_API_KEY", test_api_key)
     with TestClient(app) as client:
         response = client.post('/api/collection/pages', content=b'{}',
-                               headers={'X-API-Key': 'test-api-key'})
+                               headers={'X-API-Key': test_api_key})
 
     assert response.status_code == 422
