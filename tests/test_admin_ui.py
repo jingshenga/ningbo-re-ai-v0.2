@@ -78,8 +78,10 @@ def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch)
     dashboard = client.get("/admin/")
     assert dashboard.status_code == 200
     assert "全局在线采集开关已开启" in dashboard.text
-    assert "近 30 天机会线索" in dashboard.text
+    assert "机会扫描命中" in dashboard.text
     assert "1200+" in dashboard.text
+    assert "数量为下限" in dashboard.text
+    assert "最近 90 天" in dashboard.text
 
 def test_admin_login_rejects_non_ascii_password_without_server_error(monkeypatch):
     client = client_with_key(monkeypatch)
