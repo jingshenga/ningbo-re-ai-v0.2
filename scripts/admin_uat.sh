@@ -38,8 +38,8 @@ cleanup() {
 trap cleanup EXIT
 
 git -C "$repo_root" archive "$commit_sha" | tar -x -C "$test_dir"
-mkdir -p "$test_dir/data"
-chmod 0777 "$test_dir/data"
+mkdir -p "$test_dir/data/raw-pages"
+chmod 0777 "$test_dir/data" "$test_dir/data/raw-pages"
 cat >"$env_file" <<EOF
 POSTGRES_DB=rehouse
 POSTGRES_USER=rehouse
