@@ -204,6 +204,7 @@ def test_history_backfill_resumes_after_request_failure(monkeypatch):
     assert finished[-1][0][2] == 'success'
     assert finished[-1][1]['initial_sync_complete'] is True
 
+
 def test_unconfigured_dtk_records_blocked_config_without_network(monkeypatch):
     """blocked_config: no connector credentials, run must fail closed with zero pages."""
     finished = []
