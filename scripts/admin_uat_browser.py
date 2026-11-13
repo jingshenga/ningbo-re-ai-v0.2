@@ -213,9 +213,10 @@ def run():
         page.locator("form[action='/admin/logout'] input[name='csrf']").wait_for(state="attached")
         page.locator("form[action='/admin/logout'] button").click()
         assert urlparse(page.url).path == "/admin/login"
-        page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
-        assert urlparse(page.url).path == "/admin/login"
-        record("退出", "退出后访问受保护首页重新跳转登录", "logout.png")
+        response = page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
+        assert response and response.status == 401
+        assert "Admin login required" in page.locator("body").inner_text()
+        record("退出", "退出后会话失效；受保护首页返回401", "logout.png")
         browser.close()
 
 
