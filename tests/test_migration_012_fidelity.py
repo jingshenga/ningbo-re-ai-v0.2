@@ -60,8 +60,8 @@ def test_012_preserves_legacy_sweep_ids_without_matching_current_observation(mon
                    (target_id,revision,seen_listing_ids,sweep_number,sweep_active,
                     sweep_seen_listing_ids,completed_sweeps)
                    VALUES (%s,4,%s::jsonb,7,TRUE,%s::jsonb,6)""",
-                (target_id, json.dumps(sorted(SEEN_IDS)),
-                 json.dumps(sorted(SWEEP_IDS))),
+                (target_id, json.dumps(["12345678", "87654321", "12345678"]),
+                 json.dumps(["12345678", "55555555", "55555555"])),
             )
             # A legacy sweep ID can have an observation, but that observation may
             # refer to a different sweep. The other ID has no observation at all.
