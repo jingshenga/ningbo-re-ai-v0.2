@@ -1,3 +1,5 @@
+import gzip
+import hashlib
 import re
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -269,4 +271,24 @@ def test_review_error_dictionary_is_url_encoded(monkeypatch):
     assert response.status_code == 303
     assert "area_sqm" in query["message"][0]
     assert "需要补充" in query["message"][0]
+
+def test_listing_numeric_filters_reject_nonfinite_and_out_of_range(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    for value in ("NaN", "Infinity", "1e99999999999", "20001"):
+        response = client.get(f"/admin/listings?min_area_sqm={value}")
+        assert response.status_code == 422
+
+
+def test_candidate_evidence_rejects_content_hash_mismatch(tmp_path, monkeypatch):
+    expected = b"approved candidate evidence"
+    sha = hashlib.sha256(expected).hexdigest()
+    evidence_file = tmp_path / f"{sha}.html.gz"
+    with gzip.open(evidence_file, "wb") as stream:
+        stream.write(b"different evidence")
+    monkeypatch.setattr(admin_ui, "RAW_HTML_DIR", str(tmp_path))
+
+    assert admin_ui._candidate_html_evidence({"raw_sha256": sha}) is None
 
