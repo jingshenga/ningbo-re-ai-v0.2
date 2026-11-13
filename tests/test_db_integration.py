@@ -1,5 +1,6 @@
 """PostgreSQL-backed API checks. Set TEST_DATABASE_URL to an isolated rehouse_test DB."""
 import os
+import secrets
 import json
 import gzip
 from datetime import datetime, timedelta, timezone
@@ -27,7 +28,7 @@ if DATABASE_URL and conninfo_to_dict(DATABASE_URL).get('dbname') != 'rehouse_tes
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / 'fixtures' / 'beike_demo.html').read_text()
 BASE_URL = 'https://nb.ke.com/ershoufang/109900001234.html'
-API_KEY = 'integration-test-key'
+API_KEY = secrets.token_urlsafe(32)
 
 
 def connect_test_db(conninfo, **kwargs):
