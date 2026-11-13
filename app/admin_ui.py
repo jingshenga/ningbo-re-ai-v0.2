@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from app import collection_service, services
 from app.db import session
 from app.collection_models import CandidateCorrection, HTMLPageIn
+from app.models import SavedSearchIn
 from app.collectors.parser import CollectionError
 from app.settings import APP_API_KEY, DTK_API_KEY, DTK_BASE_URL, ENABLE_ONLINE_COLLECTION, RAW_HTML_DIR
 
@@ -246,7 +247,7 @@ def admin_dashboard(request: Request):
     dtk_note = "DTK 服务已配置" if DTK_BASE_URL and DTK_API_KEY else "尚未配置 DTK 服务；实时监控不可用。"
     online_note = ("全局在线采集开关已开启；来源授权和来源开关仍会分别校验。"
                    if ENABLE_ONLINE_COLLECTION else "在线采集全局开关关闭；可导入获准 HTML 样本。")
-    body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a><a href="/admin/listings">房源管理</a><a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a>
+    body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a><a href="/admin/listings">房源管理</a><a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a><a href="/admin/searches">条件找房</a><a href="/admin/opportunities">降价机会</a><a href="/admin/monitoring">视频监控</a>
 <form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form></nav></header>
 <main><h1>项目总览</h1><p>仅显示系统实际记录；没有数据时不会生成演示房源。</p>
 <div class="notice">{esc(online_note)}　{esc(dtk_note)}</div>
@@ -585,3 +586,145 @@ def admin_candidate_evidence(request: Request, candidate_id: UUID):
         raise HTTPException(status_code=404, detail="Stored HTML evidence is unavailable")
     inner = f"<h1>原始HTML证据</h1><p>内容已作为文本转义显示，不会执行页面脚本。</p><pre>{html.escape(content)}</pre><p><a href=\"/admin/candidates/{candidate_id}\">返回候选详情</a></p>"
     return _admin_page("原始证据", inner, request.cookies.get(COOKIE_NAME, ""))
+
+
+@router.get("/admin/searches", response_class=HTMLResponse, include_in_schema=False)
+def admin_saved_searches(request: Request):
+    _check_admin(request)
+    rows = services.all_saved_searches()
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    row_html = "".join(
+        f'<tr><td><a href="/admin/searches/{esc(row["id"])}/matches">{esc(row.get("name"))}</a></td>'
+        f'<td>{esc(row.get("district"))} · {esc(row.get("community_name"))}</td>'
+        f'<td>≤ {esc(row.get("max_price_wan"))} 万 · ≥ {esc(row.get("min_area_sqm"))}㎡ · ≥ {esc(row.get("min_bedrooms"))}室</td>'
+        f'<td>{esc(row.get("created_at"))}</td></tr>'
+        for row in rows
+    ) or '<tr><td colspan="4" class="empty">尚无条件单。保存后将按现有匹配服务筛选挂牌。</td></tr>'
+    inner = f"""<h1>条件找房</h1><p>保存条件后读取现有匹配结果与逐条匹配理由。</p>
+<form method="post" action="/admin/searches" class="panel filters">
+<input type="hidden" name="csrf" value="{html.escape(_csrf_token(request.cookies.get(COOKIE_NAME, "")), quote=True)}">
+<label>条件名称<input name="name" maxlength="120" required></label>
+<label>区域<input name="district" maxlength="100"></label>
+<label>预算上限（万元）<input name="max_price_wan" type="number" min="0" step="0.01"></label>
+<label>面积下限（㎡）<input name="min_area_sqm" type="number" min="0" step="0.01"></label>
+<label>最少卧室数<input name="min_bedrooms" type="number" min="0" max="20"></label>
+<label class="field-check"><input type="checkbox" name="notifications_enabled" checked>启用站内提醒事件</label>
+<div class="actions"><button type="submit">保存条件</button></div></form>
+<section class="panel table-wrap"><h2>已保存条件</h2><table><thead><tr><th>名称</th><th>区域</th><th>预算 / 面积 / 户型</th><th>创建时间</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
+    return _admin_page("条件找房", inner, request.cookies.get(COOKIE_NAME, ""))
+
+
+@router.post("/admin/searches", include_in_schema=False)
+async def admin_save_search(request: Request):
+    _check_admin(request)
+    values = await _request_form(request)
+    _verify_csrf(request, values)
+    payload = {
+        "name": values.get("name", [""])[0],
+        "district": values.get("district", [""])[0] or None,
+        "max_price_wan": values.get("max_price_wan", [""])[0] or None,
+        "min_area_sqm": values.get("min_area_sqm", [""])[0] or None,
+        "min_bedrooms": values.get("min_bedrooms", [""])[0] or None,
+        "notifications_enabled": values.get("notifications_enabled", [""])[0] == "on",
+    }
+    try:
+        search = services.create_saved_search(SavedSearchIn(**payload))
+    except (ValidationError, HTTPException) as exc:
+        detail = getattr(exc, "detail", None) or "请检查条件字段。"
+        inner = f'<h1>条件未保存</h1><p class="notice">{html.escape(str(detail))}</p><a href="/admin/searches">返回条件找房</a>'
+        return _admin_page("条件未保存", inner, request.cookies.get(COOKIE_NAME, ""), 422)
+    return RedirectResponse(f"/admin/searches/{search['id']}/matches", status_code=303)
+
+
+@router.get("/admin/searches/{search_id}/matches", response_class=HTMLResponse, include_in_schema=False)
+def admin_search_matches(request: Request, search_id: UUID):
+    _check_admin(request)
+    result = services.saved_search_matches(search_id, limit=100)
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    rows = "".join(
+        f'<tr><td>{esc(row.get("community_name"))}<br>{esc(row.get("district"))} · {esc(row.get("source"))}</td>'
+        f'<td>{esc(row.get("area_sqm"))}㎡ · {esc(row.get("bedrooms"))}室</td>'
+        f'<td>{esc(row.get("asking_price_wan"))} 万</td>'
+        f'<td>{esc("；".join(row.get("match_reasons") or []))}</td>'
+        f'<td>{_safe_link(row.get("listing_url"))}<br>{esc(row.get("last_observed_at"))}</td></tr>'
+        for row in result["matches"]
+    ) or '<tr><td colspan="5" class="empty">目前没有符合条件的挂牌。</td></tr>'
+    inner = f"""<h1>匹配房源</h1><p>当前共 {esc(result["total"])} 条符合；本页最多展示100条，匹配理由由现有服务生成。</p>
+<section class="panel table-wrap"><table><thead><tr><th>小区 / 区域 / 来源</th><th>面积 / 户型</th><th>挂牌价</th><th>匹配理由</th><th>来源 / 观察时间</th></tr></thead><tbody>{rows}</tbody></table></section>
+<p><a href="/admin/searches">返回条件找房</a></p>"""
+    return _admin_page("匹配房源", inner, request.cookies.get(COOKIE_NAME, ""))
+
+
+@router.get("/admin/opportunities", response_class=HTMLResponse, include_in_schema=False)
+def admin_opportunities(request: Request, days: int = 30):
+    _check_admin(request)
+    if days not in (7, 30, 90):
+        raise HTTPException(status_code=422, detail="days must be 7, 30, or 90")
+    rows = services.opportunities(days=days, limit=100)
+    drops = [row for row in rows if "same_listing_price_drop" in (row.get("signals") or [])]
+    other = [row for row in rows if "same_listing_price_drop" not in (row.get("signals") or [])]
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    drop_rows = "".join(
+        f'<tr><td>{esc(row.get("community"))}<br>{esc(row.get("district"))} · {esc(row.get("source"))}</td>'
+        f'<td>{esc(row.get("drop_from_price_wan"))} → {esc(row.get("drop_to_price_wan"))} 万</td>'
+        f'<td>降 {esc(row.get("drop_amount_wan"))} 万（{esc(row.get("drop_pct_in_window"))}%）</td>'
+        f'<td>{esc(row.get("drop_from_observed_at"))}<br>至 {esc(row.get("drop_to_observed_at"))}</td>'
+        f'<td>{_safe_link(row.get("drop_evidence_url"))}<br>{_safe_link(row.get("listing_url"))}</td></tr>'
+        for row in drops
+    ) or '<tr><td colspan="5" class="empty">所选时间窗内暂无同来源挂牌降价记录。</td></tr>'
+    other_rows = "".join(
+        f'<tr><td>{esc(row.get("community"))} · {esc(row.get("source"))}</td>'
+        f'<td>{esc("；".join(row.get("signal_reasons") or []))}</td>'
+        f'<td>{esc(row.get("last_observed_at"))}</td><td>{_safe_link(row.get("listing_url"))}</td></tr>'
+        for row in other
+    ) or '<tr><td colspan="4" class="empty">暂无其他挂牌比较线索。</td></tr>'
+    options = "".join(
+        f'<option value="{value}"{" selected" if days == value else ""}>{value}天</option>'
+        for value in (7, 30, 90)
+    )
+    inner = f"""<h1>降价与挂牌机会</h1><p>同挂牌价格变化使用来源内历史记录；跨平台或可比挂牌只作为待核实线索，不代表已确认同套或估值。</p>
+<form method="get" class="panel filters"><label>观察窗口<select name="days">{options}</select></label><div class="actions"><button type="submit">查看</button></div></form>
+<p class="muted">现有机会服务最多扫描1200套近期观察挂牌，本页最多展示100条结果；信号计算沿用现有服务。</p>
+<section class="panel table-wrap"><h2>同来源挂牌降价</h2><table><thead><tr><th>小区 / 来源</th><th>原价 → 现价</th><th>降幅</th><th>观察时间</th><th>价格证据 / 来源挂牌</th></tr></thead><tbody>{drop_rows}</tbody></table></section>
+<section class="panel table-wrap"><h2>其他比较线索（待核实）</h2><table><thead><tr><th>小区 / 来源</th><th>线索与理由</th><th>观察时间</th><th>来源挂牌</th></tr></thead><tbody>{other_rows}</tbody></table></section>"""
+    return _admin_page("降价与挂牌机会", inner, request.cookies.get(COOKIE_NAME, ""))
+
+
+@router.get("/admin/monitoring", response_class=HTMLResponse, include_in_schema=False)
+def admin_monitoring(request: Request):
+    _check_admin(request)
+    accounts = services.all_accounts()
+    videos = services.list_videos(limit=50)
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    account_rows = []
+    for account in accounts:
+        runs = services.recent_runs(account["id"], limit=5)
+        latest = runs[0] if runs else None
+        if account.get("platform") == "wechat_channels" or account.get("collector_mode") == "manual":
+            status = "手工导入；无实时同步"
+        elif not (DTK_BASE_URL and DTK_API_KEY):
+            status = "DTK尚未配置"
+        else:
+            status = (latest or {}).get("status") or account.get("last_status") or "尚无同步"
+        run_history = "".join(
+            f'<li>{esc(run.get("started_at"))} · {esc(run.get("status"))} · {esc(run.get("items_synced"))}条</li>'
+            for run in runs
+        ) or "<li>尚无同步记录</li>"
+        account_rows.append(
+            f'<tr><td>{esc(account.get("nickname") or account.get("account_ref"))}<br>{esc(account.get("platform"))}</td>'
+            f'<td>{esc(status)}</td><td>{esc(account.get("last_success_at") or (latest or {}).get("finished_at"))}</td>'
+            f'<td><ul>{run_history}</ul></td></tr>'
+        )
+    video_rows = "".join(
+        f'<tr><td>{esc(video.get("title") or video.get("author_name") or "未命名视频")}<br>{esc(video.get("platform"))}</td>'
+        f'<td>{esc(video.get("processing_status"))} · {esc(video.get("published_at"))}</td>'
+        f'<td>{_safe_link(video.get("source_url"))}</td>'
+        f'<td><details><summary>提取信息</summary><pre>{html.escape(json.dumps(video.get("extracted_fields") or {}, ensure_ascii=False, indent=2, default=str))}</pre></details></td></tr>'
+        for video in videos
+    ) or '<tr><td colspan="4" class="empty">尚无导入视频。</td></tr>'
+    account_html = "".join(account_rows) or '<tr><td colspan="4" class="empty">尚未添加监控账号。</td></tr>'
+    dtk_note = "DTK服务已配置；实际同步仍以运行记录为准。" if DTK_BASE_URL and DTK_API_KEY else "尚未配置DTK服务，抖音实时监控当前不可用。"
+    inner = f"""<h1>视频账号监控</h1><p>{esc(dtk_note)}微信视频号保持手工导入模式。</p>
+<section class="panel table-wrap"><h2>指定账号与同步状态</h2><table><thead><tr><th>账号</th><th>状态</th><th>最近成功/完成时间</th><th>最近运行</th></tr></thead><tbody>{account_html}</tbody></table></section>
+<section class="panel table-wrap"><h2>已导入视频与提取结果</h2><table><thead><tr><th>视频</th><th>处理状态</th><th>来源</th><th>提取信息</th></tr></thead><tbody>{video_rows}</tbody></table></section>"""
+    return _admin_page("视频账号监控", inner, request.cookies.get(COOKIE_NAME, ""))
