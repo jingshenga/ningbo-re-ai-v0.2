@@ -15,8 +15,11 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, rows, unbacked_sweep_ids=0):
-        self.rows = rows
+    def __init__(self, columns, functions=(), triggers=(), constraints=(), unbacked_sweep_ids=0):
+        self.columns = columns
+        self.functions = functions
+        self.triggers = triggers
+        self.constraints = constraints
         self.unbacked_sweep_ids = unbacked_sweep_ids
         self.statements = []
 
@@ -24,31 +27,24 @@ class FakeConnection:
     def transaction(self):
         yield
 
-    def execute(self, statement):
+    def execute(self, statement, params=None):
         self.statements.append(statement)
         if statement == "SELECT current_schema()":
             return FakeResult([("public",)])
         if "information_schema.columns" in statement:
-            return FakeResult(self.rows)
+            return FakeResult(self.columns)
+        if "FROM pg_proc" in statement:
+            return FakeResult([(name,) for name in self.functions])
+        if "FROM pg_trigger" in statement:
+            return FakeResult(self.triggers)
+        if "FROM pg_constraint" in statement:
+            return FakeResult([(name,) for name in self.constraints])
         if "jsonb_array_elements_text" in statement:
             return FakeResult([(self.unbacked_sweep_ids,)])
         return FakeResult([])
 
 
-def test_schema_inspection_is_read_only_and_reports_missing_objects():
-    connection = FakeConnection([("collection_listing_reviews", "conclusion")])
-
-    schema, missing_tables, missing_columns, unbacked_sweep_ids = check_schema.inspect_schema(connection)
-
-    assert connection.statements[0] == "SET TRANSACTION READ ONLY"
-    assert schema == "public"
-    assert "collection_discovery_states" in missing_tables
-    assert "collection_listing_reviews.conclusion" not in missing_columns
-    assert "collection_listing_reviews.reviewed_at" in missing_columns
-    assert unbacked_sweep_ids is None
-
-
-def test_schema_inspection_reports_unbacked_sweep_ids():
+def complete_columns():
     rows = [
         (table, column)
         for table, columns in check_schema.EXPECTED_COLUMNS.items()
@@ -65,14 +61,78 @@ def test_schema_inspection_reports_unbacked_sweep_ids():
         ("collection_listing_observations", "source_listing_id"),
         ("collection_listing_observations", "last_seen_sweep"),
     ])
-    schema, missing_tables, missing_columns, unbacked_sweep_ids = check_schema.inspect_schema(
-        FakeConnection(rows, unbacked_sweep_ids=2)
+    return rows
+
+
+def complete_functions():
+    return check_schema.EXPECTED_FUNCTIONS
+
+
+def complete_triggers():
+    return [
+        (name, table, function)
+        for name, (table, function) in check_schema.EXPECTED_TRIGGERS.items()
+    ]
+
+
+def test_schema_inspection_is_read_only_and_reports_missing_objects():
+    connection = FakeConnection([("collection_listing_reviews", "conclusion")])
+
+    result = check_schema.inspect_schema(connection)
+
+    assert connection.statements[0] == "SET TRANSACTION READ ONLY"
+    schema, missing_tables, missing_columns, missing_functions, missing_triggers, missing_constraints, unbacked = result
+    assert schema == "public"
+    assert "collection_discovery_states" in missing_tables
+    assert "collection_listing_reviews.conclusion" not in missing_columns
+    assert "collection_listing_reviews.reviewed_at" in missing_columns
+    assert missing_functions == sorted(check_schema.EXPECTED_FUNCTIONS)
+    assert len(missing_triggers) == 3
+    assert missing_constraints == sorted(check_schema.EXPECTED_CONSTRAINTS)
+    assert unbacked is None
+
+
+def test_schema_inspection_checks_append_only_triggers_and_constraints():
+    connection = FakeConnection(
+        complete_columns(),
+        functions={"maintain_collection_parse_metrics"},
+        triggers=[("collection_parse_attempt_metrics_trigger", "collection_parse_attempts", "maintain_collection_parse_metrics")],
+        constraints=[],
+        unbacked_sweep_ids=2,
     )
 
-    assert schema == "public"
+    result = check_schema.inspect_schema(connection)
+
+    _, missing_tables, missing_columns, missing_functions, missing_triggers, missing_constraints, unbacked = result
     assert missing_tables == []
     assert missing_columns == []
-    assert unbacked_sweep_ids == 2
+    assert missing_functions == ["reject_collection_parse_attempt_mutation"]
+    assert missing_triggers == [
+        "collection_parse_attempts_no_truncate on collection_parse_attempts",
+        "collection_parse_attempts_no_update_delete on collection_parse_attempts",
+    ]
+    assert missing_constraints == ["collection_listing_observations_review_status_check"]
+    assert unbacked == 2
+
+
+def test_schema_inspection_accepts_complete_critical_signature():
+    connection = FakeConnection(
+        complete_columns(),
+        functions=complete_functions(),
+        triggers=complete_triggers(),
+        constraints=check_schema.EXPECTED_CONSTRAINTS,
+        unbacked_sweep_ids=0,
+    )
+
+    result = check_schema.inspect_schema(connection)
+
+    _, missing_tables, missing_columns, missing_functions, missing_triggers, missing_constraints, unbacked = result
+    assert missing_tables == []
+    assert missing_columns == []
+    assert missing_functions == []
+    assert missing_triggers == []
+    assert missing_constraints == []
+    assert unbacked == 0
 
 
 def test_migrations_006_to_014_have_explicit_transaction_boundaries():
