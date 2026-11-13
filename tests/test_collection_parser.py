@@ -1497,6 +1497,7 @@ def test_exact_price_root_outscores_earlier_approximate_price_root(qualified_pri
     '折后 总价', '优惠后 总价', '口播总价', '口播 挂牌价', '口播：总价', '口播： 挂牌价',
     '口播:总价', '口播: 挂牌价', '成交:总价', '折后:挂牌价',
     '口播 挂牌总价', '成交 出售总价', '折后 挂牌总价', '交易总价', '合同总价', '签约总价',
+    '评估总价', '银行评估总价', '评估 挂牌价', '租金总价', '月租总价', '年租总价', '原总价',
 ])
 def test_qualified_total_is_not_treated_as_a_second_listing_price(
         source, source_url, qualified_price):
@@ -1540,7 +1541,8 @@ def test_supported_listing_price_labels_still_parse(source, source_url, price_la
 ])
 def test_non_listing_price_prefixes_cannot_match_compound_price_labels(source, source_url):
     prefixes = ('折后', '优惠后', '优惠', '折扣后', '降价后', '参考', '估算', '成交', '交易',
-                '合同', '签约', '历史', '原始', '预估', '网签', '口播', '口播：')
+                '合同', '签约', '历史', '原始', '预估', '网签', '口播', '口播：',
+                '评估', '租金', '月租', '年租', '原')
     separators = ('', ' ', ':', '：', ': ', '： ')
     labels = ('总价', '挂牌总价', '挂牌价', '挂牌售价', '售价', '出售总价')
 
@@ -1562,6 +1564,7 @@ def test_non_listing_price_prefixes_cannot_match_compound_price_labels(source, s
 ])
 @pytest.mark.parametrize('qualified_label', [
     '折后总价', '交易总价', '合同总价', '签约总价', '成交售价', '合同售价',
+    '评估总价', '银行评估总价', '租金总价', '月租总价', '年租总价', '原总价', '原挂牌价',
 ])
 def test_qualified_total_alone_does_not_fill_listing_price(source, source_url, qualified_label):
     result = parse_listing_html(
@@ -1645,6 +1648,115 @@ def test_linked_non_listing_price_range_is_not_listing_price_evidence(
     assert 'multiple_price_mentions' not in result.warnings
     assert result.fields.get('field_evidence', {}).get('asking_price_wan', {}).get(
         'mentions', []) == []
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('assessed_price', ['银行评估的总价', '银行评估 的 总价', '评估中的总价'])
+def test_linked_assessed_price_qualifier_alone_does_not_fill_listing_price(
+        source, source_url, assessed_price):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{assessed_price}：300万</main></body></html>')
+
+    assert result.fields['asking_price_wan'] is None
+    assert 'missing_asking_price_wan' in result.warnings
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('assessed_price', ['银行评估的总价', '银行评估 的 总价', '评估中的总价'])
+def test_linked_assessed_price_qualifier_stays_out_of_multiple_listing_prices(
+        source, source_url, assessed_price):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'挂牌价：365万 {assessed_price}：285万</main></body></html>')
+
+    assert result.fields['asking_price_wan'] == 365
+    assert 'multiple_price_mentions' not in result.warnings
+    assert [item['candidate_value'] for item in
+            result.fields['field_evidence']['asking_price_wan']['mentions']] == ['365']
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('periodic_price', [
+    '总价：3.6万/年', '总价：3.6万／年', '总价：3.6万元/月', '总价：3.6万每月',
+    '租金总价：3.6万/年', '挂牌价：0.3万/天', '出售总价：0.9万/周',
+])
+def test_periodic_price_alone_does_not_fill_listing_price(
+        source, source_url, periodic_price):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{periodic_price}</main></body></html>')
+
+    assert result.fields['asking_price_wan'] is None
+    assert 'missing_asking_price_wan' in result.warnings
+    assert result.fields.get('field_evidence', {}).get('asking_price_wan', {}).get(
+        'mentions', []) == []
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('periodic_price', [
+    '总价：3万-3.6万/年', '总价：3万-3.6万/月',
+])
+def test_periodic_price_range_is_not_listing_price_evidence(
+        source, source_url, periodic_price):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{periodic_price}</main></body></html>')
+
+    assert result.fields['asking_price_wan'] is None
+    assert 'multiple_price_mentions' not in result.warnings
+    assert result.fields.get('field_evidence', {}).get('asking_price_wan', {}).get(
+        'mentions', []) == []
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+@pytest.mark.parametrize('year_in_parentheses', [
+    '总价：300万（2024年）', '总价：300万（2024年交房）',
+])
+def test_year_annotation_after_price_keeps_exact_listing_price(
+        source, source_url, year_in_parentheses):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        f'{year_in_parentheses}</main></body></html>')
+
+    assert result.fields['asking_price_wan'] == 300
+    assert 'multiple_price_mentions' not in result.warnings
+
+
+@pytest.mark.parametrize(('source', 'source_url'), [
+    ('beike', 'https://nb.ke.com/ershoufang/109900001234.html'),
+    ('anjuke', 'https://ningbo.anjuke.com/sale/1234567890'),
+])
+def test_original_total_price_yields_current_total_price(source, source_url):
+    result = parse_listing_html(
+        source, source_url,
+        '<html><body><main>小区：东湖花园 建筑面积：160㎡ '
+        '原总价：350万 现总价：300万</main></body></html>')
+
+    assert result.fields['asking_price_wan'] == 300
+    assert 'multiple_price_mentions' not in result.warnings
+    assert [item['candidate_value'] for item in
+            result.fields['field_evidence']['asking_price_wan']['mentions']] == ['300']
 
 
 @pytest.mark.parametrize('qualified_area', ['套内 面积', '使用 建筑面积'])
