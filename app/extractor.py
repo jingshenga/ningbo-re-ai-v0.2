@@ -3,7 +3,9 @@ import re
 
 AREA_RE = re.compile(r'(?<!\d)(\d{2,4}(?:\.\d{1,2})?)\s*(?:㎡|m²|平米|平方(?:米)?)')
 PRICE_RE = re.compile(r'(?<!\d)(\d{2,5}(?:\.\d{1,2})?)\s*万(?:元)?')
-ROOM_RE = re.compile(r'(?<!\d)([1-9])\s*(?:室|房)')
+ROOM_RE = re.compile(r'(?<![0-9一二三四五六七八九十百零两])([1-9一二三四五六七八九两])\\s*(?:室|房)')
+ROOM_NUMERALS = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6,
+                 '七': 7, '八': 8, '九': 9, '两': 2}
 DISTRICTS = ('鄞州', '海曙', '江北', '镇海', '北仑', '奉化', '余姚', '慈溪', '宁海', '象山')
 
 
@@ -53,7 +55,9 @@ def extract_hints(*parts: str | None, known_community_names: list[str] | None = 
 
     price_candidates = numeric_mentions(PRICE_RE, 'price_mentions_wan', float, 5, 200000)
     area_candidates = numeric_mentions(AREA_RE, 'area_mentions_sqm', float, 10, 20000)
-    room_candidates = numeric_mentions(ROOM_RE, 'bedroom_mentions', int)
+    room_candidates = numeric_mentions(ROOM_RE, 'bedroom_mentions',
+                                       lambda value: int(value) if value.isascii()
+                                       else ROOM_NUMERALS[value])
     district_candidates = [d for d in DISTRICTS if d in text]
     for district in district_candidates:
         start = find_in_source(district)
