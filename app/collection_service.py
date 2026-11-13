@@ -359,15 +359,16 @@ def get_discovery_state(target_id, include_seen_ids=True):
           FROM collection_discovery_staged_ids WHERE target_id=%s
           ORDER BY source_listing_id LIMIT %s''',
           (target_id,MAX_DISCOVERY_STATE_IDS)).fetchall()
-        sweep_seen_count = conn.execute('''SELECT count(*) AS total
-          FROM collection_listing_observations
-          WHERE target_id=%s AND last_seen_sweep=%s''',
-          (target_id,state['sweep_number'])).fetchone()['total']
-        sweep_rows = conn.execute('''SELECT source_listing_id
-          FROM collection_listing_observations
-          WHERE target_id=%s AND last_seen_sweep=%s
-          ORDER BY last_seen_at,source_listing_id LIMIT %s''',
-          (target_id,state['sweep_number'],MAX_DISCOVERY_STATE_IDS)).fetchall()
+        sweep_ids = conn.execute('''SELECT source_listing_id FROM (
+            SELECT source_listing_id FROM collection_listing_observations
+            WHERE target_id=%s AND last_seen_sweep=%s
+            UNION
+            SELECT source_listing_id FROM collection_discovery_staged_ids
+            WHERE target_id=%s AND last_seen_sweep=%s
+          ) preserved_sweep_ids ORDER BY source_listing_id''',
+          (target_id,state['sweep_number'],target_id,state['sweep_number'])).fetchall()
+        sweep_seen_count = len(sweep_ids)
+        sweep_rows = sweep_ids[:MAX_DISCOVERY_STATE_IDS]
         pending_count = conn.execute('''SELECT count(*) AS total
           FROM collection_discovery_detail_queue WHERE target_id=%s''',
           (target_id,)).fetchone()['total']
