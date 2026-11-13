@@ -49,7 +49,7 @@ def _patch_ffmpeg(monkeypatch, *, probe=None, frames=None, audio_path='/tmp/audi
             raise MediaPipelineError(audio_error, audio_error)
         return audio_path
 
-    def fake_frames(work):
+    def fake_frames(work, duration_seconds=None):
         if frame_error:
             raise MediaPipelineError(frame_error, frame_error)
         return frames if frames is not None else [_frame(0), _frame(1), _frame(2)]
@@ -208,6 +208,17 @@ def test_work_dir_must_be_new_and_empty(monkeypatch, tmp_path):
         run_pipeline('/tmp/in.mp4', work_dir=work,
                      asr_engine=MockAsrEngine(script='x'), ocr_engine=MockOcrEngine())
     assert err.value.kind == 'invalid_input'
+
+
+def test_pipeline_lock_rejects_concurrent_media_job(monkeypatch, tmp_path):
+    from app.media_pipeline import pipeline
+
+    monkeypatch.setattr(pipeline, 'PIPELINE_LOCK_PATH', tmp_path / 'media.lock')
+    with pipeline._exclusive_pipeline_lock():
+        with pytest.raises(MediaPipelineError) as err:
+            run_pipeline('/tmp/in.mp4', asr_engine=MockAsrEngine(script='x'),
+                         ocr_engine=MockOcrEngine())
+    assert err.value.kind == 'media_busy'
 
 
 def test_invalid_input_raises_before_processing(monkeypatch):
