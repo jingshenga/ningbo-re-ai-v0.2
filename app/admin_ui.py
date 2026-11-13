@@ -211,12 +211,14 @@ def admin_dashboard(request: Request):
         for row in videos
     ) or '<div class="empty">尚无导入视频。</div>'
     dtk_note = "DTK 服务已配置" if DTK_BASE_URL and DTK_API_KEY else "尚未配置 DTK 服务；实时监控不可用。"
-    online_note = "在线采集已启用" if ENABLE_ONLINE_COLLECTION else "在线采集关闭；可导入获准 HTML 样本。"
+    online_note = ("全局在线采集开关已开启；来源授权和来源开关仍会分别校验。"
+                   if ENABLE_ONLINE_COLLECTION else "在线采集全局开关关闭；可导入获准 HTML 样本。")
+    opportunity_count = f"{len(opportunities)}+" if len(opportunities) == 1200 else str(len(opportunities))
     body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a>
 <form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form></nav></header>
 <main><h1>项目总览</h1><p>仅显示系统实际记录；没有数据时不会生成演示房源。</p>
 <div class="notice">{esc(online_note)}　{esc(dtk_note)}</div>
-<div class="grid">{metric("在售房源", summary["listing_count"], "不含已撤牌或已售")}{metric("待审核候选", summary["pending_count"], "需要人工核验")}{metric("近 7 天新入库", summary["new_count"], "按正式挂牌创建时间")}{metric("近 30 天降价机会", len(opportunities), "沿用现有机会计算 API")}</div>
+<div class="grid">{metric("在售房源", summary["listing_count"], "不含已撤牌或已售")}{metric("待审核候选", summary["pending_count"], "需要人工核验")}{metric("近 7 天新入库", summary["new_count"], "按正式挂牌创建时间")}{metric("近 30 天机会线索", opportunity_count, "包含同挂牌降价、低于挂牌中位数和跨平台价差候选；最多展示 1200 条，带 + 表示已达上限")}</div>
 <div class="cols"><section class="panel"><h2>最近入库房源</h2>{listing_rows}</section><section class="panel"><h2>采集来源状态</h2>{source_rows}</section></div>
 <div class="cols"><section class="panel"><h2>抖音账号监控</h2>{account_rows}</section><section class="panel"><h2>最近导入视频</h2>{video_rows}</section></div>
 <p class="muted">访问范围：NAS 本机或可信内网。首次登录使用服务器环境中的 APP_API_KEY；页面不向浏览器脚本提供该密钥。</p></main>"""
