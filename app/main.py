@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException, Path, Query
 from fastapi.security import APIKeyHeader
 from app.db import session
 from app import services
+from app import comparables
 from app.models import (AccountIn,AccountPatch,CommunityIn,ListingIn,SavedSearchIn,
                         VideoIn,VideoEnrichment,VideoBatch)
 from app.settings import APP_API_KEY
@@ -275,3 +276,15 @@ def check_collection_target(target_id:UUID):
 @app.get('/api/collection/runs',dependencies=[Depends(auth)],tags=['collection'])
 def get_collection_runs(target_id:UUID | None=None,limit:int=Query(30,ge=1,le=100)):
     return collection_service.recent_collection_runs(target_id,limit)
+
+
+@app.get('/api/value/comparables',dependencies=[Depends(auth)],tags=['valuation'])
+def get_comparable_listing_prices(
+        community_name:str=Query(min_length=2,max_length=180),
+        area_sqm:Decimal=Query(gt=0,le=20000),
+        bedrooms:int | None=Query(default=None,ge=0,le=20),
+        area_tolerance_pct:Decimal=Query(default=Decimal('10'),gt=0,le=30),
+        asking_price_wan:Decimal | None=Query(default=None,gt=0),
+        limit:int=Query(default=30,ge=1,le=100)):
+    return comparables.analyze_listings(
+        community_name,area_sqm,bedrooms,area_tolerance_pct,asking_price_wan,limit)
