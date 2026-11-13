@@ -1,3 +1,8 @@
+## 2026-11-13 P0-03/P0-06 已合并代码与下一轮目标
+- PR #8：解析器v0.2.168的评估价/租金/原价排除及周期价紧贴判断通过测试并合并；真实站点校准仍待P0-02获准的20+20样本，不视为P0-03完成。
+- PR #7：DTK状态与失败恢复离线契约测试合并，真实3个账号/24小时巡检及403/429专用阻断/退避仍缺；P0-06不视为实测完成。
+- GitHub Actions双分支组合最终 **1963快速通过 + 31 PostgreSQL17集成通过**。Issue #1关闭，Issue #3保留，Codex下一轮Issue #4隔离迁移预演、Issue #5管理后台、Issue #9安全扫描分诊；严禁误将PR合并视为NAS已部署。
+
 ## 2026-11-12 P0-03在隔离PostgreSQL 17验证不等式挂牌价证据留存
 - 新增数据库集成回归覆盖`挂牌价：>=200万`与`总价：≤200万`。API候选保持pending、`asking_price_wan`为空且未就绪；数据库JSONB持久化数值候选、完整quote、`is_non_exact=true`及`non_exact_asking_price`警告，原始HTML SHA-256及gzip字节逐项核对。
 - NAS隔离PostgreSQL 17完整数据库集成文件 **31 passed**；当前本机全量离线pytest **1850 passed、30 skipped、27 subtests passed**。30项本机PostgreSQL用例未连接本机，均已在NAS隔离PG17环境实跑通过。保留1条既有Starlette/httpx弃用警告。

@@ -1,13 +1,13 @@
 {
   "project": "宁波房产AI情报与智能选房平台",
   "version": "0.2.0",
-  "updated_at": "2026-11-12",
+  "updated_at": "2026-11-13",
   "last_iteration": {
-    "date": "2026-11-12",
-    "objective": "P0-03在隔离PostgreSQL 17验证不等式挂牌价证据端到端留存",
-    "status": "implemented_and_PG17_verified",
-    "verification": "新增API/数据库集成回归覆盖挂牌价>=200万与总价≤200万；字段留空、pending/未就绪、候选200、完整quote、is_non_exact、non_exact_asking_price警告、JSONB、原始SHA-256及gzip原始字节均核对。NAS隔离PostgreSQL 17完整tests/test_db_integration.py为31 passed；本机全量离线pytest为1850 passed、30 skipped、27 subtests passed，30个DB用例均随后在隔离PG17运行通过。解析器generic-labelled-v0.2.166。",
-    "deployment": "测试使用internal Docker网络与512 MiB tmpfs，无宿主端口、持久卷或生产挂载；源代码/pytest依赖只读挂载。测试资源及暂存文件已清理。只读复核生产PostgreSQL healthy、API/Worker运行；未修改生产schema、数据、卷、Compose或容器。真实页面准确率仍待获准样本和人工标签。"
+    "date": "2026-11-13",
+    "objective": "P0-03非挂牌价格排除修复与P0-06 DTK离线同步契约双代理PR集成",
+    "status": "merged_to_main_CI_verified_live_blocked",
+    "verification": "PR #8 parser v0.2.168 合并；PR #7 基于最新main组合CI 快速1963 passed、隔离PostgreSQL17集成31 passed；两PR的P2审查线程已解决。真实站点字段精确率、DTK 3账号24小时联调尚未验证。",
+    "deployment": "仅将代码合并到GitHub main=a26ad49；未部署NAS，未修改生产数据库schema或卷，贝壳/安居客在线采集继续OFF。"
   },
   "north_star": "宁波多源房源+短视频情报+可追溯价格历史+条件单+可解释的价格机会+未来撮合",
   "current_phase": "P0",
