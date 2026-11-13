@@ -97,6 +97,25 @@ def test_012_preserves_legacy_sweep_ids_without_matching_current_observation(mon
         assert set(state["sweep_seen_ids"]) == SWEEP_IDS
         assert state["sweep_number"] == 7
         assert state["sweep_active"] is True
+        # Bounded response must retain the exact counts and truncation flags.
+        # A small test-only limit exercises the SQL LIMIT without creating
+        # 100,000 synthetic rows in the isolated PostgreSQL database.
+        monkeypatch.setattr(collection_service, "MAX_DISCOVERY_STATE_IDS", 1)
+        limited = collection_service.get_discovery_state(target_id)
+        assert limited["seen_ids_count"] == len(SEEN_IDS | SWEEP_IDS)
+        assert len(limited["seen_ids"]) == 1
+        assert limited["seen_ids_truncated"] is True
+        assert limited["sweep_seen_ids_count"] == len(SWEEP_IDS)
+        assert len(limited["sweep_seen_ids"]) == 1
+        assert limited["sweep_seen_ids_truncated"] is True
+
+        # The independent UTF-8 size guard must still be enforced after
+        # SQL-level row limiting.
+        monkeypatch.setattr(collection_service, "MAX_DISCOVERY_STATE_ID_BYTES", 2)
+        byte_limited = collection_service.get_discovery_state(target_id)
+        assert byte_limited["sweep_seen_ids_count"] == len(SWEEP_IDS)
+        assert byte_limited["sweep_seen_ids"] == []
+        assert byte_limited["sweep_seen_ids_truncated"] is True
         with connect_test_db(scoped_url) as conn:
             rows = conn.execute(
                 """SELECT source_listing_id,last_seen_sweep
