@@ -74,7 +74,7 @@ def complete_constraints(missing=()):
         for name in check_schema.EXPECTED_CONSTRAINTS - set(missing)
     ]
     rows.extend([
-        ("source_listing_id_check", table, "CHECK (source_listing_id ~ '[0-9]+' AND source IN ('beike', 'anjuke') AND length(source_listing_id) BETWEEN 7 AND 220)")
+        ("source_listing_id_check", table, "CHECK (source_listing_id ~ '[0-9]+' AND source IN ('beike', 'anjuke') AND length(source_listing_id) BETWEEN 8 AND 220 OR length(source_listing_id) BETWEEN 7 AND 220)")
         for table in check_schema.EXPECTED_CHECK_DEFINITIONS
     ])
     return rows
