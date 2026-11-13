@@ -48,12 +48,23 @@ def test_schema_inspection_is_read_only_and_reports_missing_objects():
     assert unbacked_sweep_ids is None
 
 
-def test_schema_inspection_accepts_complete_signature():
+def test_schema_inspection_reports_unbacked_sweep_ids():
     rows = [
         (table, column)
         for table, columns in check_schema.EXPECTED_COLUMNS.items()
         for column in columns
     ]
+    rows.extend([
+        ("collection_discovery_states", "target_id"),
+        ("collection_discovery_states", "sweep_number"),
+        ("collection_discovery_states", "sweep_seen_listing_ids"),
+        ("collection_targets", "id"),
+        ("collection_targets", "source"),
+        ("collection_listing_observations", "target_id"),
+        ("collection_listing_observations", "source"),
+        ("collection_listing_observations", "source_listing_id"),
+        ("collection_listing_observations", "last_seen_sweep"),
+    ])
     schema, missing_tables, missing_columns, unbacked_sweep_ids = check_schema.inspect_schema(
         FakeConnection(rows, unbacked_sweep_ids=2)
     )
