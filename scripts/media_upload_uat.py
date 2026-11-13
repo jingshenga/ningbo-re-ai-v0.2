@@ -56,7 +56,7 @@ def main() -> None:
     before = protected_table_counts()
     marker = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix='media-upload-uat-') as temp:
-        video_file = Path(temp) / 'synthetic-' + Path(temp).name + '.mp4'
+        video_file = Path(temp) / ('synthetic-' + marker + '.mp4')
         subprocess.run([
             'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
             '-i', str(SOURCE_VIDEO), '-map', '0', '-c', 'copy',
@@ -120,12 +120,13 @@ def main() -> None:
             if frame.status_code != 200 or not frame.content.startswith(b'\\xff\\xd8'):
                 fail('authenticated OCR frame evidence was not readable')
 
-            duplicate = client.post(
-                API_BASE + '/api/media/uploads',
-                headers=headers,
-                data=form,
-                files={'file': (video_file.name, video_file.open('rb'), 'video/mp4')},
-            )
+            with video_file.open('rb') as duplicate_stream:
+                duplicate = client.post(
+                    API_BASE + '/api/media/uploads',
+                    headers=headers,
+                    data=form,
+                    files={'file': (video_file.name, duplicate_stream, 'video/mp4')},
+                )
             if (duplicate.status_code != 409 or
                     duplicate.json().get('error', {}).get('code') != 'duplicate_sha256'):
                 fail('duplicate upload did not return duplicate_sha256')
