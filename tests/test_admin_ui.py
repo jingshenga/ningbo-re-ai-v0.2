@@ -1,4 +1,8 @@
+import gzip
+import hashlib
 import re
+from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -109,3 +113,191 @@ def test_dashboard_does_not_run_full_opportunity_scan(monkeypatch):
     dashboard = client.get("/admin/")
     assert dashboard.status_code == 200
     assert "近 30 天挂牌降价" in dashboard.text
+
+def test_admin_listing_and_candidate_pages_render_after_login(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
+    monkeypatch.setattr(admin_ui.collection_service, "candidates", lambda **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    listings = client.get("/admin/listings")
+    candidates = client.get("/admin/candidates")
+    assert listings.status_code == 200
+    assert "面积下限" in listings.text
+    assert "价格上限" in listings.text
+    assert candidates.status_code == 200
+    assert "采集候选审核" in candidates.text
+
+
+def test_candidate_correction_uses_csrf_and_existing_review_service(monkeypatch):
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    monkeypatch.setattr(admin_ui, "_candidate_detail", lambda candidate_id: {
+        "id": candidate_id, "source": "beike", "source_listing_id": "12345678",
+        "review_status": "pending", "captured_at": None, "source_url": "https://example.test/listing/12345678",
+        "capture_method": "manual_html_snapshot", "parser_version": "test-parser",
+        "raw_sha256": "a" * 64, "extracted_fields": {"title": "合成候选", "area_sqm": 90},
+        "warnings": [],
+    })
+    received = []
+    monkeypatch.setattr(admin_ui.collection_service, "correct_candidate",
+                        lambda candidate_id, payload: received.append((candidate_id, payload.model_dump(exclude_unset=True))))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get(f"/admin/candidates/{candidate_id}")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post(f"/admin/candidates/{candidate_id}", data={
+        "csrf": csrf, "action": "correct", "title": "人工核验标题", "correct_title": "1",
+        "district": "", "correct_district": "1", "review_note": "已对照原始页面",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert received == [(candidate_id, {"title": "人工核验标题", "district": None, "review_note": "已对照原始页面"})]
+
+
+def test_html_sample_import_creates_candidate_only(monkeypatch):
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    received = []
+    monkeypatch.setattr(admin_ui.collection_service, "stage_manual_page",
+                        lambda payload: (received.append(payload), {"candidate": {"id": candidate_id}})[1])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/import")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post("/admin/import", data={
+        "csrf": csrf, "source": "beike",
+        "source_url": "https://example.test/listing/12345678",
+        "html": "<html><body>synthetic sample</body></html>",
+        "note": "合成测试样本",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert str(candidate_id) in response.headers["location"]
+    assert received[0].source == "beike"
+
+
+def test_candidate_review_posts_existing_approval_service(monkeypatch):
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    received = []
+    monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
+                        lambda candidate_id, decision, note: received.append((candidate_id, decision, note)))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post(f"/admin/candidates/{candidate_id}/review", data={
+        "csrf": csrf, "decision": "approve", "review_note": "审核字段和来源证据完整",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert received == [(candidate_id, "approve", "审核字段和来源证据完整")]
+
+def test_original_html_evidence_is_rendered_as_escaped_text(monkeypatch):
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    row = {"id": candidate_id, "raw_sha256": "a" * 64}
+    monkeypatch.setattr(admin_ui, "_candidate_detail", lambda candidate_id: row)
+    monkeypatch.setattr(admin_ui, "_candidate_html_evidence",
+                        lambda row: "<script>alert(1)</script>")
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get(f"/admin/candidates/{candidate_id}/evidence")
+    assert response.status_code == 200
+    assert "<script>alert" not in response.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+
+def test_dashboard_links_to_all_admin_workflows(monkeypatch):
+    client = client_with_key(monkeypatch)
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/")
+    assert "/admin/listings" in page.text
+    assert "/admin/candidates" in page.text
+    assert "/admin/import" in page.text
+
+
+def test_listing_filter_accepts_blank_optional_numbers(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get("/admin/listings?min_area_sqm=&max_area_sqm=&min_price_wan=&max_price_wan=&min_bedrooms=")
+    assert response.status_code == 200
+
+
+def test_blank_candidate_source_means_all_sources(monkeypatch):
+    client = client_with_key(monkeypatch)
+    calls = []
+    monkeypatch.setattr(admin_ui.collection_service, "candidates",
+                        lambda **kwargs: (calls.append(kwargs), [])[1])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get("/admin/candidates?status=pending&source=")
+    assert response.status_code == 200
+    assert calls[-1]["source"] is None
+
+
+def test_review_accepts_maximum_length_chinese_note(monkeypatch):
+    client = client_with_key(monkeypatch)
+    received = []
+    monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
+                        lambda candidate_id, decision, note: received.append(note))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+    note = "审" * 1000
+
+    response = client.post(f"/admin/candidates/{uuid4()}/review", data={
+        "csrf": csrf, "decision": "approve", "review_note": note,
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert received == [note]
+
+def test_review_error_dictionary_is_url_encoded(monkeypatch):
+    from fastapi import HTTPException
+
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    monkeypatch.setattr(admin_ui.collection_service, "review_candidate",
+                        lambda *args: (_ for _ in ()).throw(HTTPException(
+                            status_code=422, detail={"missing": "area_sqm", "说明": "需要补充"})))
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+    page = client.get("/admin/")
+    csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
+
+    response = client.post(f"/admin/candidates/{candidate_id}/review", data={
+        "csrf": csrf, "decision": "approve", "review_note": "审核字段和来源证据完整",
+    }, follow_redirects=False)
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert response.status_code == 303
+    assert "area_sqm" in query["message"][0]
+    assert "需要补充" in query["message"][0]
+
+def test_listing_numeric_filters_reject_nonfinite_and_out_of_range(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui, "_search_listings", lambda *args, **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    for value in ("NaN", "Infinity", "1e99999999999", "20001"):
+        response = client.get(f"/admin/listings?min_area_sqm={value}")
+        assert response.status_code == 422
+
+
+def test_candidate_evidence_rejects_content_hash_mismatch(tmp_path, monkeypatch):
+    expected = b"approved candidate evidence"
+    sha = hashlib.sha256(expected).hexdigest()
+    evidence_file = tmp_path / f"{sha}.html.gz"
+    with gzip.open(evidence_file, "wb") as stream:
+        stream.write(b"different evidence")
+    monkeypatch.setattr(admin_ui, "RAW_HTML_DIR", str(tmp_path))
+
+    assert admin_ui._candidate_html_evidence({"raw_sha256": sha}) is None
+
+def test_candidate_filters_keep_selected_status_and_source(monkeypatch):
+    client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui.collection_service, "candidates", lambda **kwargs: [])
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    page = client.get("/admin/candidates?status=approved&source=anjuke")
+    assert page.status_code == 200
+    assert '<option value="approved" selected>已通过</option>' in page.text
+    assert '<option value="anjuke" selected>安居客</option>' in page.text
