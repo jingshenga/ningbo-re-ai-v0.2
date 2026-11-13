@@ -70,8 +70,8 @@ def test_admin_login_rejects_forwarded_client_identity(monkeypatch):
 
 def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch):
     monkeypatch.setattr(admin_ui, "ENABLE_ONLINE_COLLECTION", True)
-    monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: [{}] * 1200)
     client = client_with_key(monkeypatch)
+    monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: [{}] * 1200)
     client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
 
     dashboard = client.get("/admin/")
