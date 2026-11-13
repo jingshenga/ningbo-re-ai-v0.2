@@ -67,3 +67,15 @@ def test_admin_login_rejects_forwarded_client_identity(monkeypatch):
     client = client_with_key(monkeypatch)
     response = client.get("/admin/login", headers={"x-forwarded-for": "127.0.0.1"})
     assert response.status_code == 403
+
+def test_dashboard_labels_global_gate_and_bounded_opportunity_count(monkeypatch):
+    monkeypatch.setattr(admin_ui, "ENABLE_ONLINE_COLLECTION", True)
+    monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: [{}] * 1200)
+    client = client_with_key(monkeypatch)
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    dashboard = client.get("/admin/")
+    assert dashboard.status_code == 200
+    assert "全局在线采集开关已开启" in dashboard.text
+    assert "近 30 天机会线索" in dashboard.text
+    assert "1200+" in dashboard.text
