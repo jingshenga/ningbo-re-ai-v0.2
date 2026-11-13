@@ -9,7 +9,7 @@
   → 校验（扩展名/大小）→ 复制到隔离工作目录（input.media，同时计算原始 SHA-256）
   → ffprobe（时长/分辨率/音轨存在性；时长超限拒绝）
   → ffmpeg 提取 16kHz 单声道 WAV（无音轨 → transcript 标记 no_audio）
-  → ffmpeg 按固定间隔抽取关键帧（默认 2s 一帧，上限 12 帧）
+  → ffmpeg 抽取关键帧（短视频默认 2s 一帧；长视频均匀覆盖全片；上限 12 帧）
   → ASR（FunASR / mock 人工逐字稿）→ transcript
   → OCR（RapidOCR / mock）→ 每帧文字 + 帧出处（帧号/路径/时间戳/置信度）
   → extract_hints(ocr_text, transcript)（复用 app/extractor.py）
@@ -55,10 +55,10 @@ APP_API_KEY=... python scripts/enrich_local_video.py listing.mp4 \
 |---|---|---|
 | 输入文件上限 | 1 GiB | `NBRE_MEDIA_MAX_BYTES` |
 | 时长上限 | 1800 s（30 分钟） | `NBRE_MEDIA_MAX_DURATION_SECONDS` |
-| 关键帧间隔 | 2 s（仅允许 1/2/3/5/10） | `NBRE_MEDIA_KEYFRAME_INTERVAL_SECONDS` |
+| 关键帧间隔 | 短视频按 2 s（仅允许 1/2/3/5/10）；长视频自动拉开间隔以覆盖全片 | `NBRE_MEDIA_KEYFRAME_INTERVAL_SECONDS` |
 | 关键帧上限 | 12 帧/视频（固定） | — |
 | 单次 ffmpeg 超时 | 120 s | — |
-| 并发 | 单任务（CLI 一次一个文件） | — |
+| 并发 | 单任务；同一运行环境中的并发 CLI 会快速返回 `media_busy` | — |
 
 ## 5. NAS 部署说明
 
@@ -71,11 +71,11 @@ APP_API_KEY=... python scripts/enrich_local_video.py listing.mp4 \
   通过 `FUNASR_MODEL=/path/to/local/model` 指向预先下载的模型目录；运行时不自动联网下载。可用环境变量记录模型版本：`FUNASR_MODEL_VERSION`、`RAPIDOCR_MODEL_VERSION`。
 - **许可证**：FFmpeg 为 LGPL/GPL（按编译选项）；FunASR 与 RapidOCR 为开源模型/运行时，各自许可证（MIT/Apache-2.0 等）随版本变化，商用分发前须单独核对；本文档不构成许可结论。
 - 磁盘：每视频临时占用 ≈ 输入副本 + WAV（约 32KB/s×时长）+ 12 张 1280px JPG；`--keep-work` 会保留，需运营定期清理。
-- CPU/内存：默认单任务；ffmpeg 不做额外并发设置；如 NAS 同时跑采集 Worker，建议错峰运行。
+- CPU/内存：默认单任务；进程锁覆盖同一运行环境中的多个 CLI 调用；如 NAS 同时跑采集 Worker，仍建议错峰运行。
 
 ## 6. 安全边界
 
-- ffmpeg argv 为纯字面量（无 shell、`shell=False`）；媒体文件复制为固定名 `input.media`，输入拒绝符号链接，拷贝时再次以 no-follow 打开并限量；私有空工作目录以 `cwd` 运行，命令限制为 `file,pipe` 协议，不能访问网络。
+- ffmpeg argv 通过参数数组传入（无 shell、`shell=False`）；媒体文件复制为固定名 `input.media`，输入拒绝符号链接，拷贝时再次以 no-follow 打开并限量；私有空工作目录以 `cwd` 运行，命令限制为 `file,pipe` 协议，不能访问网络。长视频的抽帧间隔由已验证时长与帧数上限计算，操作员文本不进入过滤器参数。
 - 输入先校验（扩展名白名单、大小、`resolve` 后仅接受普通文件），工作目录隔离，异常/失败统一 `MediaPipelineError` 稳定 kind，日志只含脱敏摘要（退出码 + stderr 首行截断），不泄漏文件路径与密钥。
 - enrichment 提交只允许 http/https、拒绝 URL 内凭据/路径/query/fragment；只接受 IP 字面地址，回环地址默认允许，私有/LAN IP 需 `--allow-private-network` 显式 opt-in；主机名和公网 IP 拒绝，避免 API Key 发往外部服务。
 - 不绕过任何验证码/风控/限流；媒体内容须为运营有权处理。
