@@ -269,6 +269,7 @@ def _admin_page(title, inner, cookie, status_code=200):
     header = f"""<header><strong>宁波房产工作台</strong><nav class="nav">
 <a href="/admin/">总览</a><a href="/admin/listings">房源管理</a>
 <a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a>
+<a href="/admin/searches">条件找房</a><a href="/admin/opportunities">降价机会</a><a href="/admin/monitoring">视频监控</a>
 <form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form>
 </nav></header><main>{inner}</main>"""
     return _html_page(title, header, status_code)
