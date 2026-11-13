@@ -188,3 +188,16 @@ def test_candidate_review_posts_existing_approval_service(monkeypatch):
     assert response.status_code == 303
     assert received == [(candidate_id, "approve", "审核字段和来源证据完整")]
 
+def test_original_html_evidence_is_rendered_as_escaped_text(monkeypatch):
+    client = client_with_key(monkeypatch)
+    candidate_id = uuid4()
+    row = {"id": candidate_id, "raw_sha256": "a" * 64}
+    monkeypatch.setattr(admin_ui, "_candidate_detail", lambda candidate_id: row)
+    monkeypatch.setattr(admin_ui, "_candidate_html_evidence",
+                        lambda row: "<script>alert(1)</script>")
+    client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
+
+    response = client.get(f"/admin/candidates/{candidate_id}/evidence")
+    assert response.status_code == 200
+    assert "<script>alert" not in response.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
