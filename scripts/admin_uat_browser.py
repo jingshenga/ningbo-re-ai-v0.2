@@ -97,8 +97,13 @@ def run():
         page = context.new_page()
         page.set_default_timeout(10000)
 
-        page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
-        assert urlparse(page.url).path == "/admin/login"
+        landing_response = page.goto(BASE_URL + "/admin/", wait_until="domcontentloaded")
+        landing_path = urlparse(page.url).path
+        assert landing_path == "/admin/login", (
+            f"Unauthenticated dashboard did not redirect to login: "
+            f"path={landing_path!r}, status={landing_response.status if landing_response else None}, "
+            f"body={page.locator('body').inner_text()[:500]!r}"
+        )
         page.get_by_label("APP_API_KEY").fill("invalid-uat-key")
         page.get_by_role("button", name="登录").click()
         assert "API Key 不匹配" in page.locator("body").inner_text()
