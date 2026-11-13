@@ -2,6 +2,10 @@ name: rehouse-ai-uat-20261113
 services:
   db:
     restart: "no"
+    networks:
+      private:
+        aliases:
+          - db
 
   api:
     build:
