@@ -1,3 +1,9 @@
+## 2026-11-13 Issue #2 CI merged; Issue #4 migration preflight
+- PR #6 was squash-merged as `86fbbd462fa8897e151f437b0fcd17fed55a9562`; Issue #2 is closed. The PR-head run passed: fast suite 1849 passed, 0 skipped, 27 subtests passed; isolated PostgreSQL 17 suite 31 passed, 0 skipped. The main push run also passed both jobs with the same counts.
+- Issue #4 ran migrations 001–014 in order and reran 006–014 against a synthetic V0.1 PostgreSQL 17 database. Selected listing, price history, saved-search and notification fields remained unchanged. A deliberate transactional DDL error rolled back. All temporary PG17 resources were removed.
+- Added a read-only 006–014 schema signature checker and transaction-boundary tests. Live production schema and real V0.1 backup were not accessed or verified.
+- Migration 012 clears `sweep_seen_listing_ids` without copying it. Current application reads sweep observations from the observation table, but old sweep-only IDs without a matching observation remain an unverified data-preservation risk; verify/fix separately before production migration. No SQL migration was changed and production remained untouched.
+
 ## 2026-11-12 P0-02直接采集请求的许可核验
 - 用户要求直接采集贝壳及安居客挂牌样本。重新读取贝壳官方服务协议，页面标示2026-11-11更新、2026-11-12生效；第七条限制未经书面许可读取/复制及机器人或蜘蛛获取内容，获许可后仍须遵守许可范围和Robots。依据项目当天NAS实读Robots记录，贝壳示例详情路径被禁止。
 - 安居客官方消费者协议当前正文/版本仍无法确认，且缺少本项目书面许可；其Robots允许示例路径不能代替内容使用授权。
