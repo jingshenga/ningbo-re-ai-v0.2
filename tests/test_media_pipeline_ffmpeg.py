@@ -158,14 +158,17 @@ def test_extract_keyframes_maps_index_and_timestamps(tools_on_path, monkeypatch,
                         lambda *a, **kw: (calls.append((a, kw)) or FakeProc(stdout='')))
     for name in ('frame_0001.jpg', 'frame_0002.jpg', 'frame_0003.jpg'):
         (tmp_path / name).write_bytes(b'jpg')
-    frames = ffmpeg_tools.extract_keyframes(tmp_path)
+    frames = ffmpeg_tools.extract_keyframes(tmp_path, duration_seconds=1200.0)
     assert '-protocol_whitelist' in calls[0][0][0]
     assert 'file,pipe' in calls[0][0][0]
     assert calls[0][1]['shell'] is False
     assert calls[0][1]['cwd'] == str(tmp_path)
+    args = calls[0][0][0]
+    assert args[args.index('-vf') + 1] == limits.sampling_filter(1200.0)
+    assert str(limits.MAX_KEYFRAMES) in args
     assert [f.index for f in frames] == [0, 1, 2]
     assert [f.timestamp_seconds for f in frames] == [
-        round(i * limits.KEYFRAME_INTERVAL_SECONDS, 3) for i in (0, 1, 2)]
+        round(i * limits.sampling_interval(1200.0), 3) for i in (0, 1, 2)]
     assert all(f.source == 'interval' for f in frames)
 
 
@@ -174,6 +177,15 @@ def test_extract_keyframes_maps_ffmpeg_failure(tools_on_path, monkeypatch, tmp_p
     with pytest.raises(MediaPipelineError) as err:
         ffmpeg_tools.extract_keyframes(tmp_path)
     assert err.value.kind == 'ffmpeg_failed'
+
+
+def test_long_video_sampling_spreads_capped_frames_across_duration():
+    short_filter = limits.sampling_filter(8.0)
+    long_filter = limits.sampling_filter(1800.0)
+
+    assert short_filter == limits.interval_filter()
+    assert long_filter.startswith('fps=1/')
+    assert long_filter != limits.interval_filter()
 
 
 def test_require_ffmpeg_tools_fails_closed(monkeypatch):
