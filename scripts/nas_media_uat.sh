@@ -42,8 +42,15 @@ dc() {
 }
 
 health_check() {
-  curl --fail --silent --show-error http://127.0.0.1:18788/healthz >/dev/null
-  curl --fail --silent --show-error http://127.0.0.1:18788/admin/login >/dev/null
+  for _ in $(seq 1 60); do
+    if curl --fail --silent http://127.0.0.1:18788/healthz >/dev/null &&
+       curl --fail --silent http://127.0.0.1:18788/admin/login >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "API health or admin login did not become ready in 60 seconds" >&2
+  return 1
 }
 
 run_video_roundtrip() {
