@@ -16,10 +16,12 @@ from app.collectors.parser import CollectionError
 from app.collection_models import (HTMLPageIn,CollectionTargetIn,CollectionTargetPatch,
                                    PolicyReviewIn,CandidateCorrection,DiscoveryStateIn,
                                    DiscoveryReviewIn)
+from app.admin_ui import router as admin_ui_router
 
 app=FastAPI(title='宁波房产 AI 数据平台 - V0.2',version='0.2.0',
     description='指定账号监控 / 贝壳安居客采集候选审核 / 历史挂牌价 / 条件单 / 提醒事件（未接外部发送）')
 app.add_middleware(CollectionPageBodyLimitMiddleware)
+app.include_router(admin_ui_router)
 
 
 api_key_header=APIKeyHeader(name='X-API-Key',auto_error=False)
