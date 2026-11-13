@@ -71,7 +71,6 @@ EXPECTED_CONSTRAINTS = {
     "collection_discovery_states_sweep_number_check",
     "collection_discovery_states_sweep_seen_listing_ids_check",
     "collection_discovery_states_completed_sweeps_check",
-    "collection_listing_observations_source_listing_id_check",
     "collection_listing_observations_observation_count_check",
     "collection_listing_observations_first_page_sha256_check",
     "collection_listing_observations_last_page_sha256_check",
@@ -85,9 +84,18 @@ EXPECTED_CONSTRAINTS = {
     "collection_parse_attempts_parse_status_check",
     "collection_parse_attempts_check",
     "collection_discovery_detail_queue_source_check",
-    "collection_discovery_detail_queue_source_listing_id_check",
     "collection_discovery_detail_queue_attempt_count_check",
     "collection_discovery_detail_queue_last_error_type_check",
+}
+EXPECTED_CHECK_DEFINITIONS = {
+    "collection_listing_observations": (
+        "collection_listing_observations.source_listing_id",
+        ("source_listing_id", "'beike'", "'anjuke'", "8", "7", "220"),
+    ),
+    "collection_discovery_detail_queue": (
+        "collection_discovery_detail_queue.source_listing_id",
+        ("source_listing_id", "'beike'", "'anjuke'", "8", "7", "220"),
+    ),
 }
 
 
@@ -120,11 +128,11 @@ def inspect_schema(conn):
             (sorted(EXPECTED_TRIGGERS),),
         ).fetchall()
         constraints = conn.execute(
-            """SELECT c.conname
+            """SELECT c.conname, t.relname, pg_get_constraintdef(c.oid) AS definition
                FROM pg_constraint AS c
-               JOIN pg_namespace AS n ON n.oid = c.connamespace
-               WHERE n.nspname = current_schema() AND c.conname = ANY(%s)""",
-            (sorted(EXPECTED_CONSTRAINTS),),
+               JOIN pg_class AS t ON t.oid = c.conrelid
+               JOIN pg_namespace AS n ON n.oid = t.relnamespace
+               WHERE n.nspname = current_schema() AND c.contype = 'c'"""
         ).fetchall()
 
         actual = {}
@@ -171,9 +179,18 @@ def inspect_schema(conn):
         for name, (table, function) in EXPECTED_TRIGGERS.items()
         if (name, table, function) not in actual_triggers
     )
-    missing_constraints = sorted(
-        EXPECTED_CONSTRAINTS - {_row_value(row, "conname", 0) for row in constraints}
-    )
+    actual_constraint_names = {_row_value(row, "conname", 0) for row in constraints}
+    missing_constraints = sorted(EXPECTED_CONSTRAINTS - actual_constraint_names)
+    for table, (label, fragments) in EXPECTED_CHECK_DEFINITIONS.items():
+        definitions = [
+            _row_value(row, "definition", 2).lower()
+            for row in constraints
+            if _row_value(row, "relname", 1) == table
+        ]
+        if not any(all(fragment in definition for fragment in fragments)
+                   for definition in definitions):
+            missing_constraints.append(label)
+    missing_constraints.sort()
     return (
         schema, missing_tables, missing_columns, missing_functions,
         missing_triggers, missing_constraints, unbacked_sweep_ids,

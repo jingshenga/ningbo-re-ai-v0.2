@@ -38,7 +38,7 @@ class FakeConnection:
         if "FROM pg_trigger" in statement:
             return FakeResult(self.triggers)
         if "FROM pg_constraint" in statement:
-            return FakeResult([(name,) for name in self.constraints])
+            return FakeResult(self.constraints)
         if "jsonb_array_elements_text" in statement:
             return FakeResult([(self.unbacked_sweep_ids,)])
         return FakeResult([])
@@ -68,6 +68,18 @@ def complete_functions():
     return check_schema.EXPECTED_FUNCTIONS
 
 
+def complete_constraints(missing=()):
+    rows = [
+        (name, "collection_listing_reviews", "CHECK (review_status IS NOT NULL)")
+        for name in check_schema.EXPECTED_CONSTRAINTS - set(missing)
+    ]
+    rows.extend([
+        ("source_listing_id_check", table, "CHECK (source_listing_id ~ '[0-9]+' AND source IN ('beike', 'anjuke') AND length(source_listing_id) BETWEEN 7 AND 220)")
+        for table in check_schema.EXPECTED_CHECK_DEFINITIONS
+    ])
+    return rows
+
+
 def complete_triggers():
     return [
         (name, table, function)
@@ -88,7 +100,11 @@ def test_schema_inspection_is_read_only_and_reports_missing_objects():
     assert "collection_listing_reviews.reviewed_at" in missing_columns
     assert missing_functions == sorted(check_schema.EXPECTED_FUNCTIONS)
     assert len(missing_triggers) == 3
-    assert missing_constraints == sorted(check_schema.EXPECTED_CONSTRAINTS)
+    expected_missing = sorted(
+        check_schema.EXPECTED_CONSTRAINTS
+        | {definition[0] for definition in check_schema.EXPECTED_CHECK_DEFINITIONS.values()}
+    )
+    assert missing_constraints == expected_missing
     assert unbacked is None
 
 
@@ -97,7 +113,7 @@ def test_schema_inspection_checks_append_only_triggers_and_constraints():
         complete_columns(),
         functions={"maintain_collection_parse_metrics"},
         triggers=[("collection_parse_attempt_metrics_trigger", "collection_parse_attempts", "maintain_collection_parse_metrics")],
-        constraints=check_schema.EXPECTED_CONSTRAINTS - {"collection_listing_observations_review_status_check"},
+        constraints=complete_constraints({"collection_listing_observations_review_status_check"}),
         unbacked_sweep_ids=2,
     )
 
@@ -120,7 +136,7 @@ def test_schema_inspection_accepts_complete_critical_signature():
         complete_columns(),
         functions=complete_functions(),
         triggers=complete_triggers(),
-        constraints=check_schema.EXPECTED_CONSTRAINTS,
+        constraints=complete_constraints(),
         unbacked_sweep_ids=0,
     )
 
