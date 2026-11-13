@@ -99,7 +99,8 @@ class MediaEvidence:
                         'frame_index': item.frame_index,
                         'timestamp_seconds': item.timestamp_seconds,
                         'confidence': item.confidence,
-                        'frame_sha256': item.frame_path,
+                        # The media digest + frame index/time are the stable evidence locator.
+                        # Do not mislabel a transient local path as a content hash.
                     } for item in self.ocr.items
                 ],
             },

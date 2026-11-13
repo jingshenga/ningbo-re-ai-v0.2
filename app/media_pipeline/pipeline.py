@@ -41,8 +41,12 @@ def run_pipeline(path: str | Path, *,
         tempfile.mkdtemp(prefix='nbre-media-'))
     if own_work_dir:
         work.mkdir(parents=True, exist_ok=True)
-    if not work.is_dir():
-        raise MediaPipelineError('invalid_input', 'work directory is not a directory')
+    if not work.is_dir() or work.is_symlink():
+        raise MediaPipelineError('invalid_input', 'work directory must be a real directory')
+    # FFmpeg uses fixed output names; an existing file/symlink must never be
+    # overwritten by an operator-provided --keep-work path.
+    if any(work.iterdir()):
+        raise MediaPipelineError('invalid_input', 'work directory must be empty')
     try:
         sha256, size_bytes = ffmpeg_tools.prepare_input(source, work)
         probe = ffmpeg_tools.probe_media(work, size_bytes)

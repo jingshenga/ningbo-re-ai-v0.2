@@ -144,3 +144,20 @@ def test_mock_asr_script_option_flows_to_engine(cli, monkeypatch, capsys, tmp_pa
     code = cli.main(['/tmp/x.mp4', '--asr', 'mock', '--asr-script', str(script)])
     assert code == cli.EXIT_OK
     assert seen['asr'].engine == 'mock'
+
+
+def test_api_origin_rejects_public_literal_ip_and_path_injection(monkeypatch):
+    from app.media_pipeline.enrich_api import submit_enrichment
+    monkeypatch.setattr('app.media_pipeline.enrich_api.httpx.patch',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('must not send')))
+    for base, video in [
+        ('http://8.8.8.8:8788', 'v-1'),
+        ('https://8.8.8.8', 'v-1'),
+        ('http://127.0.0.1:8788', 'v-1/../../something'),
+        ('http://127.0.0.1:8788?redirect=1', 'v-1'),
+    ]:
+        with pytest.raises(MediaPipelineError) as exc:
+            submit_enrichment(api_base=base, video_id=video, api_key='fixture',
+                              transcript='x', ocr_text=None,
+                              allow_private_network=True)
+        assert exc.value.kind == 'invalid_api_url'

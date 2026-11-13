@@ -5,7 +5,7 @@
 ## 1. 链路
 
 ```
-本地 MP4/mov/mkv/... 
+本地 MP4/mov/mkv/...
   → 校验（扩展名/大小）→ 复制到隔离工作目录（input.media，同时计算原始 SHA-256）
   → ffprobe（时长/分辨率/音轨存在性；时长超限拒绝）
   → ffmpeg 提取 16kHz 单声道 WAV（无音轨 → transcript 标记 no_audio）
@@ -83,7 +83,7 @@ APP_API_KEY=... python scripts/enrich_local_video.py listing.mp4 \
 ## 7. 已验证与未验证（2026-11-13）
 
 **已验证（本机 macOS）**
-- 真实 FFmpeg 9.0.2 链路 + mock 引擎：合成 MP4（testsrc2+sine，6 秒带音轨）→ 真实 ffprobe/音频/3 帧 → extract_hints 输出 365万/160㎡、证据 quote 与帧出处。
+- 真实 FFmpeg 9.0.2 链路 + mock 引擎：合成 MP4（testsrc2+sine，6 秒带音轨）→ 真实 ffprobe/音频/3 帧 → extract_hints 输出 365万/160㎡、证据 quote、原始视频SHA-256和帧时间戳；临时帧路径不冒充SHA-256。
 - **真实 RapidOCR 推理（rapidocr-onnxruntime CPU）**：合成房源视频（8 秒、4 行中文文字：小区/总价/面积/户型装修）→ 真实抽 4 帧 → 每帧 4 行全部识别（置信度 0.94–0.9998；`㎡` 被识别为 `m²`，extractor 的面积正则同时覆盖两种写法）→ hints 输出 `price_mentions_wan=[365.0]`、`area_mentions_sqm=[160.0]`、证据来源 `ocr_text`。端到端 0.86–1.14 s，峰值内存 ≈481–504 MB（`/usr/bin/time -l`）。首跑暴露新版 RapidOCR `(rows, elapse)` 元组返回契约：已修复为防御性解包（整行 repr 与 elapse 不得进入 OCR 文本，含失败先行回归）。
 - **enrichment 测试库闭环（Docker 隔离 PostgreSQL 16，sql 001–014 全量迁移）**：`POST /api/ingest/videos` 建行 → CLI `--ocr rapidocr --submit` → 服务端真实写入 `videos.transcript/ocr_text/extracted_fields`，`processing_status='enriched'`，服务端按库内小区名单重算 hints；**`source_listings` 与 `price_history` 均为 0 行**——口播价/画面价未进入正式挂牌与价格历史。
 - 单元测试（媒体流水线 47+ 项）：无音频、空 OCR、重复运行确定性、超长/超大/非法扩展名、ffmpeg 失败、ASR/OCR unavailable、多价格并存仅作线索、CLI dry-run/退出码/密钥不泄漏/私网 opt-in、RapidOCR 元组契约。
@@ -99,3 +99,10 @@ APP_API_KEY=... python scripts/enrich_local_video.py listing.mp4 \
 - `app/media_pipeline/`：errors / limits / models / ffmpeg_tools / asr / ocr / pipeline / enrich_api
 - `scripts/enrich_local_video.py`：CLI
 - `tests/test_media_pipeline_ffmpeg.py`、`tests/test_media_pipeline_engines.py`、`tests/test_media_pipeline_pipeline.py`、`tests/test_enrich_local_video.py`
+
+## 9. 集成安全加固
+
+- 输出仅保留视频SHA-256与帧序号/时间戳，不将自动清理的临时帧路径伪装为帧哈希。
+- `--keep-work`目录必须为空，且FFmpeg输入使用独占写入，禁止覆盖既有文件/符号链接。
+- API只接收无额外路径/查询的目标origin；禁止公网IP目标，私网/主机名明确授权；video ID只能是单一路径段。
+- `--ocr auto`在缺RapidOCR且未提供人工OCR文字时返回`unavailable`而非空mock成功；手工文本才可明确标记mock。

@@ -150,3 +150,14 @@ def test_require_ffmpeg_tools_fails_closed(monkeypatch):
     with pytest.raises(MediaPipelineError) as err:
         ffmpeg_tools.probe_media(Path('/tmp'), size_bytes=1)
     assert err.value.kind == 'ffmpeg_missing'
+
+
+def test_prepare_input_rejects_preexisting_symlink(tmp_path):
+    source = tmp_path / 'source.mp4'
+    source.write_bytes(b'video')
+    target = tmp_path / 'do-not-overwrite.txt'
+    target.write_text('protected', encoding='utf-8')
+    (tmp_path / 'input.media').symlink_to(target)
+    with pytest.raises(FileExistsError):
+        ffmpeg_tools.prepare_input(source, tmp_path)
+    assert target.read_text(encoding='utf-8') == 'protected'

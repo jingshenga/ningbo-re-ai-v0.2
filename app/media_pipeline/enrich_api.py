@@ -10,6 +10,7 @@ logs, exceptions or returned data.
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 import httpx
@@ -44,10 +45,16 @@ def submit_enrichment(*, api_base: str, api_key: str, video_id: str,
         raise MediaPipelineError('invalid_api_url', 'API base URL must use http or https')
     if parts.username is not None or parts.password is not None:
         raise MediaPipelineError('invalid_api_url', 'API base URL must not contain credentials')
+    if parts.query or parts.fragment or parts.path not in ('', '/'):
+        raise MediaPipelineError('invalid_api_url', 'API base URL must be a bare origin')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', video_id):
+        raise MediaPipelineError('invalid_api_url', 'video ID must be one path segment')
     host = parts.hostname
     if not host:
         raise MediaPipelineError('invalid_api_url', 'API base URL has no host')
     host_kind = _classify_host(host)
+    if host_kind == 'public':
+        raise MediaPipelineError('invalid_api_url', 'public-IP API targets are not supported')
     if host_kind in ('private', 'hostname') and not allow_private_network:
         raise MediaPipelineError(
             'invalid_api_url',

@@ -121,7 +121,13 @@ def test_rapidocr_engine_parses_tuple_result_and_frame_provenance(monkeypatch):
     assert result.items[0].timestamp_seconds == 0.0
 
 
-def test_build_ocr_engine_auto_falls_back_to_mock(monkeypatch):
+def test_build_ocr_engine_auto_falls_back_to_mock_only_with_manual_text(monkeypatch):
+    monkeypatch.setattr('app.media_pipeline.ocr._rapidocr_available', lambda: False)
+    engine = build_ocr_engine('auto', text_map={0: '手工OCR'})
+    assert engine.engine == 'mock'
+
+
+def test_build_ocr_engine_auto_without_model_or_text_is_unavailable(monkeypatch):
     monkeypatch.setattr('app.media_pipeline.ocr._rapidocr_available', lambda: False)
     engine = build_ocr_engine('auto')
-    assert engine.engine == 'mock'
+    assert engine.recognize([]).status == 'unavailable'

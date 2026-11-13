@@ -10,6 +10,7 @@ output volume for the DXP4800 single-job policy.
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import shutil
 import subprocess
@@ -82,7 +83,10 @@ def prepare_input(source: Path, work_dir: Path) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
     destination = Path(work_dir) / _INPUT_NAME
-    with source.open('rb') as reader, destination.open('wb') as writer:
+    # Exclusive creation prevents races with pre-existing files/symlinks.
+    # This is a local tool, but supplied work folders must still be safe.
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with source.open('rb') as reader, os.fdopen(fd, 'wb') as writer:
         while True:
             chunk = reader.read(_READ_CHUNK)
             if not chunk:

@@ -191,3 +191,26 @@ def test_evidence_as_dict_is_json_serializable(monkeypatch):
     json.dumps(payload, ensure_ascii=False)
     assert payload['media_sha256'] == 'sha256x'
     assert payload['ocr']['items'][0]['text'] == '365万'
+
+
+def test_work_dir_must_be_empty_to_avoid_overwriting_operator_data(monkeypatch, tmp_path):
+    _patch_ffmpeg(monkeypatch)
+    work = tmp_path / 'keep'
+    work.mkdir()
+    original = work / 'input.media'
+    original.write_text('operator data', encoding='utf-8')
+    with pytest.raises(MediaPipelineError) as err:
+        run_pipeline('/tmp/in.mp4', asr_engine=MockAsrEngine(script='x'),
+                     ocr_engine=MockOcrEngine(), work_dir=work, keep_work=True)
+    assert err.value.kind == 'invalid_input'
+    assert original.read_text(encoding='utf-8') == 'operator data'
+
+def test_json_never_claims_transient_path_is_frame_sha256(monkeypatch):
+    _patch_ffmpeg(monkeypatch)
+    evidence = run_pipeline('/tmp/in.mp4',
+                            asr_engine=MockAsrEngine(script='x'),
+                            ocr_engine=MockOcrEngine(text_map={0: '总价365万'}))
+    payload = evidence.as_dict()
+    assert payload['ocr']['items'][0]['frame_index'] == 0
+    assert payload['ocr']['items'][0]['timestamp_seconds'] == 0.0
+    assert 'frame_sha256' not in payload['ocr']['items'][0]
