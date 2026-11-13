@@ -69,10 +69,11 @@ def approve_candidate(candidate_id, correct_fields=False, label="candidate"):
     if correct_fields:
         form = page.locator("form[action='/admin/candidates/" + candidate_id + "']")
         form.locator("input[name='correct_bedrooms']").check()
-        form.locator("input[name='bedrooms']").fill("4")
+        form.locator("input[name='bedrooms']").fill("5")
         form.locator("input[name='review_note']").fill("确认合成户型字段")
         form.get_by_role("button", name="保存纠错").click()
         assert "纠错已保存" in page.locator("body").inner_text()
+        assert page.locator("form[action='/admin/candidates/" + candidate_id + "'] input[name='bedrooms']").input_value() == "5"
         record(label + " 人工纠错表单", "勾选并保存卧室数字段，页面回显纠错结果", label + "-correction.png")
 
     review_form = page.locator("form[action='/admin/candidates/" + candidate_id + "/review']")
@@ -89,7 +90,7 @@ def run():
     original = FIXTURE.read_text(encoding="utf-8")
     if "365万" not in original:
         raise AssertionError("Synthetic fixture price anchor changed; update UAT fixture transform")
-    reduced = original.replace("365万", "340万", 1)
+    reduced = original.replace("365万", "340万", 1).replace("4室2厅", "5室2厅", 1)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -162,6 +163,7 @@ def run():
         page.get_by_role("heading", name="东湖花园").wait_for()
         assert "365.00" in page.locator("body").inner_text()
         assert "340.00" in page.locator("body").inner_text()
+        assert "5室" in page.locator("body").inner_text()
         history_section = page.locator("section.panel").filter(has_text="价格历史")
         assert history_section.locator("tbody tr").count() >= 2
         listing_id = listing_url.rstrip("/").split("/")[-1]
@@ -174,7 +176,7 @@ def run():
         form.locator("input[name='district']").fill("鄞州")
         form.locator("input[name='max_price_wan']").fill("400")
         form.locator("input[name='min_area_sqm']").fill("140")
-        form.locator("input[name='min_bedrooms']").fill("4")
+        form.locator("input[name='min_bedrooms']").fill("5")
         form.get_by_role("button", name="保存条件").click()
         page.get_by_role("heading", name="匹配房源").wait_for()
         assert "东湖花园" in page.locator("body").inner_text()
