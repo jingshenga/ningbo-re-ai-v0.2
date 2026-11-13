@@ -349,8 +349,15 @@ def test_opportunity_page_selects_window_and_shows_price_evidence(monkeypatch):
     calls = []
     monkeypatch.setattr(admin_ui.services, "opportunities", lambda **kwargs: (
         calls.append(kwargs), [
-            {"signals": ["same_listing_price_drop"], "community": "降价小区",
-             "district": "海曙区", "source": "beike", "drop_from_price_wan": 330,
+            {"signals": ["same_listing_price_drop", "cross_platform_price_gap"], "community": "降价小区",
+             "district": "海曙区", "source": "beike",
+             "signal_reasons": ["30天挂牌降价", "跨平台候选待核实"],
+             "cross_platform_price_gaps": [{
+                 "source": "anjuke", "source_listing_id": "87654321", "verification_status": "candidate",
+                 "asking_price_wan": 330, "unit_price_gap_pct": 12.5,
+                 "listing_url": "https://example.test/counterpart",
+             }],
+             "drop_from_price_wan": 330,
              "drop_to_price_wan": 300, "drop_amount_wan": 30, "drop_pct_in_window": 9.09,
              "drop_from_observed_at": "2026-01-01", "drop_to_observed_at": "2026-01-10",
              "drop_evidence_url": "https://example.test/evidence",
@@ -366,7 +373,10 @@ def test_opportunity_page_selects_window_and_shows_price_evidence(monkeypatch):
     assert calls[-1]["days"] == 7
     assert "330 → 300 万" in page.text
     assert "降 30 万（9.09%）" in page.text
-    assert "同小区跨平台价差，待核实" in page.text
+    assert "同小区跨平台价差，待核实" in page.text or "跨平台候选待核实" in page.text
+    assert "87654321" in page.text
+    assert "candidate" in page.text
+    assert "example.test/counterpart" in page.text
 
 
 def test_monitoring_page_labels_unconfigured_dtk_and_manual_accounts(monkeypatch):
@@ -379,7 +389,9 @@ def test_monitoring_page_labels_unconfigured_dtk_and_manual_accounts(monkeypatch
         {"id": uuid4(), "platform": "wechat_channels", "collector_mode": "manual",
          "account_ref": "channels-user", "nickname": "视频号"},
     ])
-    monkeypatch.setattr(admin_ui.services, "recent_runs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(admin_ui.services, "recent_runs", lambda *args, **kwargs: [{
+        "started_at": "2026-01-02", "status": "success", "observed_count": 12, "new_count": 3,
+    }])
     monkeypatch.setattr(admin_ui.services, "list_videos", lambda **kwargs: [{
         "title": "已导入视频", "platform": "wechat_channels", "processing_status": "completed",
         "published_at": "2026-01-01", "source_url": "https://example.test/video",
@@ -391,5 +403,6 @@ def test_monitoring_page_labels_unconfigured_dtk_and_manual_accounts(monkeypatch
     assert page.status_code == 200
     assert "尚未配置DTK服务" in page.text
     assert "手工导入；无实时同步" in page.text
+    assert "观察 12 条 / 新增 3 条" in page.text
     assert "已导入视频" in page.text
     assert "合成小区" in page.text
