@@ -52,3 +52,12 @@ scripts/nas_media_uat.sh stop
 要求终端输出完整脚本结束标记、Compose 状态包含 PG17/API/worker、API health 与 Admin login GET 成功、视频 enrichment 返回成功、媒体故障后 API/PG17 仍健康。记录 main SHA、UAT 开始/结束时间、独立卷名称及生成的合成视频 ID。
 
 `accept` 的脚本实际执行结果才是 NAS Docker 验收证据。GitHub Actions 或静态 Compose 校验不等于 NAS 实际运行验收；真实 OCR 准确率也不是该脚本的验收目标。
+
+
+## NAS 实际隔离验收记录（2026-11-13）
+
+DXP4800（Docker 29.6.2 / Compose v5.1.3）已在 `main 47e72124dd7fe4f2ed1577d54ff384ed1cfbc35d` 运行时源码上执行 `scripts/nas_media_uat.sh accept`。UAT Compose 项目 `rehouse-ai-uat-20261113`、PG17 卷 `rehouse-ai-uat-20261113-pgdata` 与 API `127.0.0.1:18788` 独立；PG 数据卷只挂在 UAT DB，API/worker 只绑定 UAT 源码的 `./data`，未引用生产项目或 `ningbo-re-ai_pgdata`。
+
+验收结果：PG17 healthy；迁移 006/012/013/014 签名校验通过；FFmpeg 7.1.5 和 `rapidocr_onnxruntime==1.4.4` 模型初始化成功；管理后台登录 GET 与 API health 均通过；合成 2 秒 MP4 成功写入既有 video enrichment API（记录 ID `04d54230-57bd-47cc-b810-58274207c5ac`，`processing_status=enriched`）；脚本在 enrichment 后验证 `source_listings=0`、`price_history=0`；畸形媒体按预期返回输入错误，随后 API 和 PG17 仍健康。项目状态显示 3/3 运行，UAT 数据库有 1 条合成视频记录。
+
+第一次脚本运行暴露了启动就绪等待和宿主机 bind 目录权限问题；修正后已在最终脚本上重新通过。UAT 数据卷和项目保留以便复核。此验收的 OCR 文本使用 mock 输入；仅证明媒体/FFmpeg/enrichment 协作与故障隔离，不构成真实 OCR 质量证明，也不是生产迁移或生产数据库验收。
