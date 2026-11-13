@@ -282,15 +282,17 @@ def _safe_link(value):
     return f'<a href="{escaped}" rel="noopener noreferrer">{escaped}</a>'
 
 
-def _filter_decimal(value, name):
+def _filter_decimal(value, name, maximum):
     if value in (None, ""):
         return None
+    if len(value) > 32:
+        raise HTTPException(status_code=422, detail=f"{name} is too long")
     try:
         result = Decimal(value)
     except InvalidOperation as exc:
         raise HTTPException(status_code=422, detail=f"{name} must be a number") from exc
-    if result <= 0:
-        raise HTTPException(status_code=422, detail=f"{name} must be positive")
+    if not result.is_finite() or result <= 0 or result > maximum:
+        raise HTTPException(status_code=422, detail=f"{name} is out of range")
     return result
 
 
@@ -359,7 +361,7 @@ def _candidate_html_evidence(row):
     try:
         with gzip.open(path, "rb") as source:
             content = source.read(1_000_001)
-        if len(content) > 1_000_000:
+        if len(content) > 1_000_000 or hashlib.sha256(content).hexdigest() != sha:
             return None
         return content.decode("utf-8")
     except (OSError, EOFError, UnicodeDecodeError, zlib.error):
@@ -382,10 +384,10 @@ def admin_listings(request: Request, district: str | None = None,
                    min_price_wan: str | None = None, max_price_wan: str | None = None,
                    min_bedrooms: str | None = None):
     _check_admin(request)
-    min_area_sqm = _filter_decimal(min_area_sqm, "min_area_sqm")
-    max_area_sqm = _filter_decimal(max_area_sqm, "max_area_sqm")
-    min_price_wan = _filter_decimal(min_price_wan, "min_price_wan")
-    max_price_wan = _filter_decimal(max_price_wan, "max_price_wan")
+    min_area_sqm = _filter_decimal(min_area_sqm, "min_area_sqm", Decimal("20000"))
+    max_area_sqm = _filter_decimal(max_area_sqm, "max_area_sqm", Decimal("20000"))
+    min_price_wan = _filter_decimal(min_price_wan, "min_price_wan", Decimal("200000"))
+    max_price_wan = _filter_decimal(max_price_wan, "max_price_wan", Decimal("200000"))
     min_bedrooms = _filter_integer(min_bedrooms, "min_bedrooms", 20)
     district = district or None
     community_name = community_name or None
