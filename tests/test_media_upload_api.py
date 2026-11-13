@@ -100,6 +100,28 @@ def wait_for_status(manager, upload_id, expected, timeout=5):
     raise AssertionError('upload did not reach a terminal status')
 
 
+def test_multiple_ocr_items_can_reference_the_same_frame(tmp_path):
+    manager = UploadManager(tmp_path / 'uploads')
+    upload_id = '12345678123456781234567812345678'
+    work = tmp_path / 'work' / upload_id
+    work.mkdir(parents=True)
+    frame = work / 'frame_0000.jpg'
+    frame.write_bytes(b'jpeg-evidence')
+    result = {'ocr': {'items': [
+        {'text': '第一行', 'frame_index': 0, 'frame_path': str(frame)},
+        {'text': '第二行', 'frame_index': 0, 'frame_path': str(frame)},
+    ]}}
+
+    manager._retain_frame_evidence(upload_id, result, work)
+
+    retained = manager.frames_dir / upload_id / 'frame_0000.jpg'
+    assert retained.read_bytes() == b'jpeg-evidence'
+    assert [item['frame_url'] for item in result['ocr']['items']] == [
+        '/api/media/uploads/%s/frames/0' % upload_id,
+        '/api/media/uploads/%s/frames/0' % upload_id,
+    ]
+
+
 def test_upload_runs_queue_and_keeps_ocr_frame_evidence_without_database(monkeypatch, tmp_path):
     monkeypatch.setattr(main, 'session', lambda: pytest.fail('upload API must not use PostgreSQL'))
     with upload_client(tmp_path, monkeypatch) as (client, manager):
