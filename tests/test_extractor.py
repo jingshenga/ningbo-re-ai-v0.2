@@ -7,6 +7,7 @@ def test_extract_price_area_community():
     assert r['community_mentions']==['东湖花园']
     assert r['price_mentions_wan']==[398.0,365.0]
     assert r['area_mentions_sqm']==[160.0]
+    assert r['bedroom_mentions']==[4]
     assert r['method']=='rule_based_hints_not_verified'
 
 
@@ -39,3 +40,51 @@ def test_evidence_does_not_cross_source_boundaries():
 
     assert r['community_mentions']==[]
     assert not r['evidence']
+
+def test_chinese_bedroom_numerals_extract_correct_values_and_evidence():
+    result = extract_hints(
+        '东湖花园 四室两厅',
+        '两房一厅',
+        source_labels=['ocr_text', 'transcript'],
+    )
+
+    assert result['bedroom_mentions'] == [4, 2]
+    bedroom_evidence = [
+        row for row in result['evidence'] if row['field'] == 'bedroom_mentions'
+    ]
+    assert bedroom_evidence == [
+        {'field': 'bedroom_mentions', 'value': 4, 'source': 'ocr_text',
+         'quote': '四室', 'start_char': 5, 'end_char': 7},
+        {'field': 'bedroom_mentions', 'value': 2, 'source': 'transcript',
+         'quote': '两房', 'start_char': 0, 'end_char': 2},
+    ]
+    assert result['confidence_status'] == 'not_calibrated'
+
+
+def test_chinese_and_arabic_bedroom_counts_deduplicate_by_numeric_value():
+    result = extract_hints('四室、4房、二室、两室、三房、3室')
+    assert result['bedroom_mentions'] == [4, 2, 3]
+
+
+def test_chinese_bedroom_numerals_preserve_optional_spaces():
+    result = extract_hints('户型：三 室 两 厅')
+    assert result['bedroom_mentions'] == [3]
+    assert any(item['field'] == 'bedroom_mentions'
+               and item['quote'] == '三 室' for item in result['evidence'])
+
+
+def test_chinese_bedroom_match_does_not_take_suffix_of_larger_numbers():
+    result = extract_hints(
+        '十一室，十室，一百室，11室，10房，0室，'
+        '一〇一室，三千一室，一万一室，廿一室，卅一室，佰一室，１２室'
+    )
+    assert result['bedroom_mentions'] == []
+    assert not any(item['field'] == 'bedroom_mentions' for item in result['evidence'])
+
+
+def test_chinese_bedroom_ranges_are_not_claimed_as_exact_calibrated_hints():
+    result = extract_hints('四室两厅 总价365万', source_labels=['ocr_text'])
+    assert result['bedroom_mentions'] == [4]
+    assert result['price_mentions_wan'] == [365.0]
+    assert result['confidence_status'] == 'not_calibrated'
+    assert '不得自动当作正式挂牌价' in result['warning']
