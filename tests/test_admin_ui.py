@@ -61,3 +61,8 @@ def test_admin_logout_requires_csrf_token(monkeypatch):
 def test_admin_login_rejects_public_client_address(monkeypatch):
     client = client_with_key(monkeypatch, client=("8.8.8.8", 12345))
     assert client.get("/admin/login").status_code == 403
+
+def test_admin_login_rejects_forwarded_client_identity(monkeypatch):
+    client = client_with_key(monkeypatch)
+    response = client.get("/admin/login", headers={"x-forwarded-for": "127.0.0.1"})
+    assert response.status_code == 403
