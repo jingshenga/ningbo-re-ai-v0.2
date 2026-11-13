@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--api-url', default='http://127.0.0.1:8788',
                         help='API base URL (default NAS-local)')
     parser.add_argument('--allow-private-network', action='store_true',
-                        help='opt-in for LAN/private or hostname API targets')
+                        help='opt-in for private IP API targets')
     parser.add_argument('--asr', choices=['auto', 'mock', 'funasr'], default='auto')
     parser.add_argument('--asr-script', default=None,
                         help='manual transcript file for the mock ASR engine')
@@ -91,11 +91,24 @@ def main(argv: list[str] | None = None) -> int:
     except MediaPipelineError as exc:
         print(_error_json(exc.kind, exc.detail), file=sys.stderr)
         return EXIT_PROCESSING if exc.kind.startswith(('ffmpeg', 'media')) else EXIT_INVALID
+    except (OSError, UnicodeError, ValueError) as exc:
+        print(_error_json('invalid_input',
+                          'could not read configured processing input: ' + type(exc).__name__),
+              file=sys.stderr)
+        return EXIT_INVALID
 
     result = evidence.as_dict()
     result['ok'] = True
     result['submitted'] = False
     if args.submit:
+        transcript = (evidence.transcript.text or '').strip() or None
+        ocr_text = '\n'.join(item.text for item in evidence.ocr.items).strip() or None
+        if transcript is None and ocr_text is None:
+            print(_error_json(
+                'empty_enrichment',
+                'no transcript or OCR text is available; the video was not marked enriched',
+            ), file=sys.stderr)
+            return EXIT_SUBMIT
         api_key = os.environ.get('APP_API_KEY')
         if not api_key:
             print(_error_json('invalid_input', 'set APP_API_KEY to submit enrichment'),
@@ -104,8 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             server_response = submit_enrichment(
                 api_base=args.api_url, api_key=api_key, video_id=args.video_id,
-                transcript=evidence.transcript.text,
-                ocr_text='\n'.join(item.text for item in evidence.ocr.items) or None,
+                transcript=transcript,
+                ocr_text=ocr_text,
                 allow_private_network=args.allow_private_network,
             )
         except MediaPipelineError as exc:
