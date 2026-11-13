@@ -180,19 +180,22 @@ def extract_audio(work_dir: Path) -> Path | None:
     return out_path
 
 
-def extract_keyframes(work_dir: Path) -> list:
-    """Sample one frame every KEYFRAME_INTERVAL_SECONDS, capped at MAX_KEYFRAMES.
+def extract_keyframes(work_dir: Path, duration_seconds: float | None = None) -> list:
+    """Sample short clips at the configured cadence and spread long clips across time.
 
-    The filter and frame cap are literal argv entries; the numeric interval
-    (from limits) drives timestamp attribution only.
+    The filter is built from bounded ffprobe duration and module limits, never
+    from operator-provided text. The output count remains capped.
     """
     from app.media_pipeline.models import KeyFrame
     _require_ffmpeg_tools()
+    sample_duration = (duration_seconds if duration_seconds is not None else
+                       limits.MAX_KEYFRAMES * limits.KEYFRAME_INTERVAL_SECONDS)
+    sample_interval = limits.sampling_interval(sample_duration)
     with _tool_errors():
         proc = subprocess.run(
             ['ffmpeg', '-v', 'error', '-protocol_whitelist', 'file,pipe',
              '-y', '-i', 'input.media',
-             '-vf', limits.interval_filter(),
+             '-vf', limits.sampling_filter(sample_duration),
              '-frames:v', str(limits.MAX_KEYFRAMES), '-q:v', '3',
              'frame_%04d.jpg'],
             shell=False, capture_output=True, text=True, check=False,
@@ -208,6 +211,6 @@ def extract_keyframes(work_dir: Path) -> list:
         index = int(frame_path.stem.split('_')[-1]) - 1  # %04d is 1-based
         frames.append(KeyFrame(
             path=str(frame_path), index=index,
-            timestamp_seconds=round(index * limits.KEYFRAME_INTERVAL_SECONDS, 3),
+            timestamp_seconds=round(index * sample_interval, 3),
             source='interval'))
     return frames
