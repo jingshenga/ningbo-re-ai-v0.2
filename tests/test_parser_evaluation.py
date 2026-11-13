@@ -156,6 +156,7 @@ def test_evaluator_scores_supported_listing_price_label_aliases(tmp_path, price_
 
 @pytest.mark.parametrize('qualified_label', [
     '口播:挂牌总价', '交易总价', '合同总价', '签约总价',
+    '评估总价', '银行评估总价', '租金总价', '原总价',
 ])
 @pytest.mark.parametrize('source', ['beike', 'anjuke'])
 def test_evaluator_keeps_qualified_price_out_of_listing_price(tmp_path, qualified_label, source):
@@ -188,6 +189,33 @@ def test_evaluator_counts_unit_price_as_missing_total_price(tmp_path, source):
     html_path = tmp_path / row['html_path']
     html = html_path.read_text(encoding='utf-8').replace(
         '总价：400万', '挂牌价：2万／㎡')
+    html_path.write_text(html, encoding='utf-8')
+    row['sha256'] = hashlib.sha256(html.encode('utf-8')).hexdigest()
+    with manifest.open('w', encoding='utf-8', newline='') as stream:
+        writer = csv.DictWriter(stream, fieldnames=sorted(REQUIRED_COLUMNS))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = evaluate_manifest(manifest, tmp_path, minimum_per_source=5)
+
+    metric = report['fields'][source]['asking_price_wan']
+    assert metric['correct'] == metric['labeled']
+    assert metric['precision_pct'] == 100.0
+    assert report['scenarios'][source]['missing_fields']['pass_rate_pct'] == 100.0
+
+
+@pytest.mark.parametrize('source', ['beike', 'anjuke'])
+@pytest.mark.parametrize('periodic_price', [
+    '总价：3.6万/年', '租金总价：3.6万/月', '挂牌价：0.3万/天',
+])
+def test_evaluator_counts_periodic_price_as_missing_total_price(
+        tmp_path, source, periodic_price):
+    manifest, rows = build_eval_manifest(tmp_path)
+    row = next(row for row in rows if row['source'] == source)
+    row['asking_price_wan'] = ''
+    row['scenario_tags'] = 'missing_fields'
+    html_path = tmp_path / row['html_path']
+    html = html_path.read_text(encoding='utf-8').replace('总价：400万', periodic_price)
     html_path.write_text(html, encoding='utf-8')
     row['sha256'] = hashlib.sha256(html.encode('utf-8')).hexdigest()
     with manifest.open('w', encoding='utf-8', newline='') as stream:

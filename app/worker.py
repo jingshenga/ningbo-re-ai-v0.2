@@ -96,6 +96,22 @@ def store_page(account,items,first_run,cutoff):
 
 
 def run_account(account):
+    """Sync one account against DTK v5; status semantics recorded in account_sync_runs:
+
+    success  - every requested page was read and no degradation signal appeared;
+               baseline mode (history_mode='none') intentionally reads one page,
+               so an upstream has_more there is expected, not partial.
+    partial  - data returned but confidence is reduced (guest_fallback feed, skipped
+               items without stable IDs, unknown publish dates during backfill,
+               missing pagination cursor, or page cap while more posts remain).
+               new_count==0 with status partial must be read as "unknown, possibly
+               missed", never as "no updates".
+    failed   - an exception aborted the run; pages/observed/new keep what was
+               collected before the error; the account stays enabled and is
+               retried at its next regular poll because the claim advanced
+               next_poll_at before any network call.
+    blocked_config - DTK_BASE_URL/DTK_API_KEY unset; no network attempt is made.
+    """
     run_id=start_run(account['id'])
     pages=seen=new=0
     if not DTK_BASE_URL or not DTK_API_KEY:

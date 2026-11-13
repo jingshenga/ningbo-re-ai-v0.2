@@ -203,3 +203,179 @@ def test_history_backfill_resumes_after_request_failure(monkeypatch):
     assert account['history_backfill_cutoff'] is None
     assert finished[-1][0][2] == 'success'
     assert finished[-1][1]['initial_sync_complete'] is True
+
+
+def test_unconfigured_dtk_records_blocked_config_without_network(monkeypatch):
+    """blocked_config: no connector credentials, run must fail closed with zero pages."""
+    finished = []
+
+    class MustNotConstruct:
+        def __init__(self, base_url, api_key):
+            raise AssertionError('DtkClient constructed while DTK is not configured')
+
+    monkeypatch.setattr(worker, 'DTK_BASE_URL', '')
+    monkeypatch.setattr(worker, 'DTK_API_KEY', '')
+    monkeypatch.setattr(worker, 'start_run', lambda account_id: 'run-1')
+    monkeypatch.setattr(worker, 'finish_run',
+                        lambda *args, **kwargs: finished.append((args, kwargs)))
+    monkeypatch.setattr(worker, 'DtkClient', MustNotConstruct)
+
+    worker.run_account({
+        'id': 'account-1',
+        'account_ref': 'author-1',
+        'initial_synced': True,
+        'history_mode': 'none',
+    })
+
+    assert len(finished) == 1
+    args, kwargs = finished[0]
+    assert args[2] == 'blocked_config'
+    assert 'DTK_BASE_URL' in kwargs['error'] and 'not configured' in kwargs['error']
+
+
+def test_guest_fallback_page_reports_partial_even_without_new_works(monkeypatch):
+    """partial: guest feed may omit newest posts; zero new items never reports success."""
+    finished = []
+
+    class Client:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def author_posts(self, account_ref, cursor):
+            return Page(items=[], next_cursor=None, has_more=False, guest_fallback=True)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(worker, 'DTK_BASE_URL', 'http://dtk.test')
+    monkeypatch.setattr(worker, 'DTK_API_KEY', 'test-key')
+    monkeypatch.setattr(worker, 'start_run', lambda account_id: 'run-1')
+    monkeypatch.setattr(worker, 'finish_run',
+                        lambda *args, **kwargs: finished.append((args, kwargs)))
+    monkeypatch.setattr(worker, 'store_page', lambda *args: (0, 0, 0, 0, 0))
+    monkeypatch.setattr(worker, 'DtkClient', Client)
+
+    worker.run_account({
+        'id': 'account-1',
+        'account_ref': 'author-1',
+        'initial_synced': True,
+        'history_mode': 'none',
+    })
+
+    args, kwargs = finished[0]
+    assert args[2] == 'partial'
+    assert args[5] == 0
+    assert 'guest_fallback' in args[6]
+
+
+def test_failed_run_keeps_partial_counts_and_leaves_account_enabled(monkeypatch):
+    """failed: safe error text, counts so far preserved, account stays claimable for retry."""
+    finished = []
+    real_finish_run = worker.finish_run
+
+    class Client:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def author_posts(self, account_ref, cursor):
+            if cursor is None:
+                return Page(items=[{'id': 'p1'}], next_cursor='c1', has_more=True)
+            raise RuntimeError('upstream boom')
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(worker, 'DTK_BASE_URL', 'http://dtk.test')
+    monkeypatch.setattr(worker, 'DTK_API_KEY', 'test-key')
+    monkeypatch.setattr(worker, 'start_run', lambda account_id: 'run-1')
+    monkeypatch.setattr(worker, 'finish_run',
+                        lambda *args, **kwargs: finished.append((args, kwargs)))
+    monkeypatch.setattr(worker, 'store_page', lambda *args: (1, 1, 0, 0, 0))
+    monkeypatch.setattr(worker, 'DtkClient', Client)
+
+    worker.run_account({
+        'id': 'account-1',
+        'account_ref': 'author-1',
+        'initial_synced': True,
+        'history_mode': 'none',
+    })
+
+    args, kwargs = finished[0]
+    assert args[2] == 'failed'
+    assert args[3] == 1 and args[4] == 1 and args[5] == 1
+    assert 'RuntimeError' in args[6] and 'details omitted' in args[6]
+
+    # finish_run itself must not disable the account nor touch its schedule:
+    # retry happens on the next regular claim because claim_due_account advanced
+    # next_poll_at before the network attempt.
+    class Result:
+        def __init__(self, row):
+            self.row = row
+
+        def fetchone(self):
+            return self.row
+
+    class Connection:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, query, params=None):
+            self.calls.append((query, params))
+            return Result({'id': 'account-1'})
+
+    from contextlib import contextmanager
+
+    connection = Connection()
+
+    @contextmanager
+    def fake_session():
+        yield connection
+
+    monkeypatch.setattr(worker, 'session', fake_session)
+    real_finish_run('account-1', 'run-1', 'failed', 1, 1, 1, 'RuntimeError: account sync failed')
+
+    account_update = connection.calls[1][0]
+    assert 'enabled' not in account_update
+    assert 'next_poll_at' not in account_update
+    assert connection.calls[1][1][0] == 'failed'
+
+
+def test_first_baseline_sync_reads_single_page_and_completes(monkeypatch):
+    """First run with history_mode=none: exactly one page, baseline only, sync completes."""
+    finished = []
+    store_calls = []
+
+    class Client:
+        def __init__(self, base_url, api_key):
+            pass
+
+        def author_posts(self, account_ref, cursor):
+            return Page(items=[{'id': 'p1'}, {'id': 'p2'}], next_cursor='c1', has_more=True)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(worker, 'DTK_BASE_URL', 'http://dtk.test')
+    monkeypatch.setattr(worker, 'DTK_API_KEY', 'test-key')
+    monkeypatch.setattr(worker, 'start_run', lambda account_id: 'run-1')
+    monkeypatch.setattr(worker, 'finish_run',
+                        lambda *args, **kwargs: finished.append((args, kwargs)))
+    monkeypatch.setattr(worker, 'store_page',
+                        lambda account, items, first_run, cutoff: (
+                            store_calls.append((first_run, cutoff)) or (2, 0, 2, 0, 0)))
+    monkeypatch.setattr(worker, 'DtkClient', Client)
+
+    worker.run_account({
+        'id': 'account-1',
+        'account_ref': 'author-1',
+        'initial_synced': False,
+        'history_mode': 'none',
+    })
+
+    assert store_calls == [(True, None)]
+    args, kwargs = finished[0]
+    # Baseline mode deliberately reads exactly one page: older upstream content is
+    # out of scope by operator choice, so hitting the page cap is not a defect.
+    assert args[2] == 'success'
+    assert 'Page limit reached' not in (args[6] or '')
+    assert kwargs['initial_sync_complete'] is True

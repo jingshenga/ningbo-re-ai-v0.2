@@ -1864,7 +1864,6 @@ def test_saved_search_matches_return_hard_matches_with_preference_order(api):
     missing = client.get(f'/api/saved-searches/{uuid4()}/matches', headers=headers)
     assert missing.status_code == 404
 
-
 def test_readonly_schema_checker_matches_pg17_migration_schema(api):
     from scripts.check_schema import inspect_schema
 
@@ -1882,3 +1881,4 @@ def test_readonly_schema_checker_matches_pg17_migration_schema(api):
     assert missing_triggers == []
     assert missing_constraints == []
     assert unbacked_sweep_ids == 0
+

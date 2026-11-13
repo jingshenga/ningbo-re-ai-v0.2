@@ -1,8 +1,13 @@
-## 2026-11-13 Issue #2 CI merged; Issue #4 migration preflight
-- PR #6 was squash-merged as `86fbbd462fa8897e151f437b0fcd17fed55a9562`; Issue #2 is closed. The PR-head run passed: fast suite 1849 passed, 0 skipped, 27 subtests passed; isolated PostgreSQL 17 suite 31 passed, 0 skipped. The main push run also passed both jobs with the same counts.
-- Issue #4 ran migrations 001–014 in order and reran 006–014 against a synthetic V0.1 PostgreSQL 17 database. Selected listing, price history, saved-search and notification fields remained unchanged. A deliberate transactional DDL error rolled back. All temporary PG17 resources were removed.
-- Added a read-only 006–014 schema signature checker and transaction-boundary tests. Live production schema and real V0.1 backup were not accessed or verified.
-- Migration 012 clears `sweep_seen_listing_ids` without copying it. Current application reads sweep observations from the observation table, but old sweep-only IDs without a matching observation remain an unverified data-preservation risk; verify/fix separately before production migration. No SQL migration was changed and production remained untouched.
+## 2026-11-13 Issue #4 migration preflight synchronized with main
+- PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
+- Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
+- No NAS production database, volume, Compose file, or container was modified. Real production schema and V0.1 backup remain unverified.
+
+## 2026-11-13 ZCode双分支集成（GitHub PR #8、#7）
+- 修复：网页挂牌价格上下文解析升级`generic-labelled-v0.2.168`；评估总价、租金/年费、原总价不再当作精确挂牌价；正常挂牌价后跟月供、物业费等独立句子仍保留。解析器/评估器/API和新回归测试一起合并。
+- 测试与文档：DTK worker的`success`/`partial`/`failed`/`blocked_config`离线行为增加回归；纠正403/429当前仍只记`failed`且没有专门退避机制的说明，列出未来安全改造验收。
+- 集成CI：PR #7基于PR #8合并后main重新验收，快速1963项通过、隔离PG17集成31项通过；PR #8/#7均完成审查与Squash Merge，Issue #1关闭，Issue #3保留真实联调。
+- 部署边界：未对NAS生产数据或容器部署本轮更改，贝壳/安居客在线采集继续关闭。Mimosa本地Push拦截单列Issue #9跟踪。
 
 ## 2026-11-12 P0-02直接采集请求的来源许可门禁
 - 核对贝壳官网现行《平台服务使用协议》（页面标示2026-11-11更新、2026-11-12生效）：第七条要求书面许可，并限制未经许可读取、机器人/蜘蛛获取及超出许可范围使用。项目当天NAS读取的贝壳Robots规则还禁止示例二手房详情路径。

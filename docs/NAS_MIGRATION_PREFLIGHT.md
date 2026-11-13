@@ -8,7 +8,7 @@ No production database, production container, production volume, Compose file, o
 
 ## Rehearsal evidence
 
-- Source: GitHub `main` at `86fbbd462fa8897e151f437b0fcd17fed55a9562`.
+- Source: GitHub `main` at `054786c8527778855c35dd373d4272b6ba8c2efd`.
 - Runtime: PostgreSQL 17 (`postgres:17-alpine`).
 - Isolation: dedicated Docker internal network; database directory on 512 MiB tmpfs; no published port and no mounts or persistent volumes.
 - Synthetic starting point: migrations 001–014 applied in order, with a legacy listing, property, platform price history, saved search and notification row inserted after 001.
@@ -59,3 +59,8 @@ Production migration is not authorized by this issue. Before a separately approv
 5. Recheck schema objects, critical constraints, counts and selected business fields before a separately authorized production rollout.
 
 Until a real backup and schema snapshot are available, production migration status remains unverified.
+
+
+## Main synchronization and review follow-up
+
+The preflight branch was synchronized with main commit `054786c8527778855c35dd373d4272b6ba8c2efd`. The read-only checker also verifies the migration 011 function, enabled triggers, and behavior-defining constraints. The review thread for that gap is resolved; synchronized GitHub Actions passed 1962 quick tests and 31 PostgreSQL 17 integration tests. Migration 012 sweep-only ID preservation is isolated in Issue #13 and remains a production-upgrade gate.

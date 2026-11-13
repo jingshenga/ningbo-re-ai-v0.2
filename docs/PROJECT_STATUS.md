@@ -1,8 +1,13 @@
-## 2026-11-13 Issue #2 CI merged; Issue #4 migration preflight
-- PR #6 was squash-merged as `86fbbd462fa8897e151f437b0fcd17fed55a9562`; Issue #2 is closed. The PR-head run passed: fast suite 1849 passed, 0 skipped, 27 subtests passed; isolated PostgreSQL 17 suite 31 passed, 0 skipped. The main push run also passed both jobs with the same counts.
-- Issue #4 ran migrations 001–014 in order and reran 006–014 against a synthetic V0.1 PostgreSQL 17 database. Selected listing, price history, saved-search and notification fields remained unchanged. A deliberate transactional DDL error rolled back. All temporary PG17 resources were removed.
-- Added a read-only 006–014 schema signature checker and transaction-boundary tests. Live production schema and real V0.1 backup were not accessed or verified.
-- Migration 012 clears `sweep_seen_listing_ids` without copying it. Current application reads sweep observations from the observation table, but old sweep-only IDs without a matching observation remain an unverified data-preservation risk; verify/fix separately before production migration. No SQL migration was changed and production remained untouched.
+## 2026-11-13 Issue #4 migration preflight synchronized with main
+- PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
+- Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
+- No NAS production database, volume, Compose file, or container was modified. Real production schema and V0.1 backup remain unverified.
+
+## 2026-11-13 P0-03/P0-06 双代理PR集成与真实联调边界
+- ZCode Bundle的解析器修复经PR #8合并：`generic-labelled-v0.2.168`，排除评估/租金/原总价及单位周期报价；新增独立“每月还贷/每年物业费”上下文回归，保证正常300万挂牌价不会被误排。Issue #1完成关闭。
+- ZCode DTK worker状态契约及回归经PR #7合并：`blocked_config`、`guest_fallback→partial`、失败计数/后续轮询及首次基线单页行为经离线测试验证。已纠正文档：DTK收到403/429当前记普通`failed`，没有专用blocked状态/退避；仍待后续安全改造和获准账号实测，Issue #3继续开放。
+- 在包含上述两项功能的PR #7合并预检中，GitHub Actions快速测试 **1963 passed**、隔离PostgreSQL 17集成 **31 passed**，均成功，审查线程已解决。合并后的main功能基线为`a26ad49`。无NAS部署、数据库迁移、真实网站采集或24小时监控验收。
+- 后续：Codex执行Issue #4隔离PG17迁移预演、Issue #5管理后台；Issue #9处理Mimosa Push扫描超时和SQL参数化误报（不能关闭安全门）。P0-02真实合法页面样本与P0-06真实联调仍由外部条件阻塞。
 
 ## 2026-11-12 P0-02直接采集请求的许可核验
 - 用户要求直接采集贝壳及安居客挂牌样本。重新读取贝壳官方服务协议，页面标示2026-11-11更新、2026-11-12生效；第七条限制未经书面许可读取/复制及机器人或蜘蛛获取内容，获许可后仍须遵守许可范围和Robots。依据项目当天NAS实读Robots记录，贝壳示例详情路径被禁止。

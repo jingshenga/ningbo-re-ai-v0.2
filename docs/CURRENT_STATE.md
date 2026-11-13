@@ -1,36 +1,37 @@
 # Current State
 
-Snapshot: 2026-11-13. This is the short operational handoff; see linked project records for detail.
-GitHub: [jingshenga/ningbo-re-ai-v0.2](https://github.com/jingshenga/ningbo-re-ai-v0.2)
-Main baseline after Issue #2: `86fbbd462fa8897e151f437b0fcd17fed55a9562` (2026-11-13). PR #6 was squash-merged; Issue #2 is closed.
+Snapshot: 2026-11-13. This is the short handoff for coding agents; read the assigned GitHub Issue before editing.
+Repository: [jingshenga/ningbo-re-ai-v0.2](https://github.com/jingshenga/ningbo-re-ai-v0.2)
+Main baseline after PR #11: `054786c` (2026-11-13).
 
-## Product and verification
+## Confirmed product and code
 
-- V0.2 is a single-operator backend prototype for Ningbo listings, video context, price history, saved searches, opportunities, and reviewable notifications.
-- Candidate review, approved source listings, source-scoped price history, saved-search matching, price-drop detection, and notification events already exist. Do not rebuild them as part of infrastructure work.
-- Latest recorded isolated PostgreSQL 17.11 run: `tests/test_db_integration.py` **31 passed** (2026-11-12, NAS temporary internal network, 512 MiB tmpfs, no production volume/port; temporary resources cleaned). This is prior verification, not the new GitHub Actions result.
-- GitHub Actions run #43355428469 passed on main: fast suite 1849 passed, 0 skipped, 27 subtests; isolated PostgreSQL 17 suite 31 passed, 0 skipped. Both jobs reported one existing warning.
-- Local PostgreSQL integration tests skip unless `TEST_DATABASE_URL` names the dedicated `rehouse_test` database.
-- Production migrations 006–014 are not confirmed present. Issue #4 has an isolated synthetic PG17 rehearsal; no production schema was read or changed. Migration 012's handling of sweep-only IDs remains a separate pre-production data-preservation gate. Do not run migrations or deploy without a fresh backup and explicit authorization.
-- No production-grade frontend, multi-user authentication, automatic video ASR/OCR, or external notification delivery is verified.
+- Single-operator FastAPI/PostgreSQL 17 backend prototype, **not** a public multi-user product. Existing approved listing pipeline, source-scoped price history, saved-search matching, price-drop candidates, and notification outbox should be reused.
+- PR #6: PR and main GitHub Actions CI, isolated PostgreSQL 17 integration, and agent collaboration instructions merged.
+- PR #8 / Issue #1: parser `generic-labelled-v0.2.168` merged. Assessed values, rent and historic asking-price contexts do not become exact platform asking prices; periodic units must be attached to the number, preserving a valid asking price followed by unrelated monthly/annual expenses. This is **synthetic fixture verification**, not real page accuracy validation.
+- PR #7: DTK worker status semantics and offline regression tests merged. The DTK 403/429 path currently records ordinary `failed` (redacted), **not a dedicated blocked status or backoff**; the documentation records that implementation gap.
+- Combined PR #7 on latest parser main (2026-11-13): GitHub Actions **1963 quick tests passed**, **31 isolated PostgreSQL 17 integration tests passed**, no failing checks. These are CI results, not NAS production deployment checks.
 
-## Current P0 status
+## Data-source and deployment gates
 
-| Goal | Status | Remaining gate |
+- Beike and Anjuke: public-page parsing and manual/approved HTML sample ingestion are the current technical plan; licensed APIs are optional future adapters. Online automatic collection remains **OFF** pending written permission and site/robots review. P0-02 requires 20 legitimately obtained and manually labeled samples per source; still blocked.
+- Douyin: DTK v5 adapter has offline contract coverage only. Actual DTK instance, three permitted accounts and 24-hour observation are not verified. Issue #3 remains open. WeChat Channels stays manual-import only.
+- NAS DXP4800: last documented read-only production audit found services healthy on local 8788, but schema migrations 006–014 and latest code were not deployed. Issue #4 is **isolated PG17 migration preflight only**; no production DB/schema/volume writes without fresh verified backup and explicit operator approval.
+- No validated external notifications, automatic production video ASR/OCR, finished consumer interface, or reliable actual-sale-level valuation.
+
+## Current tasks and ownership
+
+| GitHub Issue | Owner | Next gate |
 |---|---|---|
-| P0-01 V0.1 migration | blocked | A real V0.1 database backup is unavailable. |
-| P0-02 licensed listing samples | blocked | Written source permission and 20 labeled HTML pages per source are missing; online collection stays off. |
-| P0-03 parser field accuracy | in progress | Requires P0-02 samples; synthetic fixtures do not prove live accuracy. |
-| P0-04 source policy review | in progress | Current policy evidence and project permission are incomplete. |
-| P0-05 PostgreSQL integration | verified | PR #6 CI passed on PR head and main: 1849 fast tests and 31 PG17 integration tests. |
-| P0-07 production schema/health | in progress | Issue #4 synthetic PG17 preflight passed; live schema, real backup restore, and migration 012 sweep-ID risk remain open. |
-| P0-09 listing discovery | in progress | Authorized live-source end-to-end validation is outstanding. |
+| #1 | ZCode | Closed; parser PR #8 merged. |
+| #2 | Codex | Closed; CI PR #6 merged. |
+| #3 | ZCode | Offline DTK PR #7 merged; live 3-account / 24-hour acceptance outstanding, and rate-limit blocked-status hardening is a separate unimplemented task. |
+| #4 | Codex | PR #10 merged after isolated PG17 preflight; no production writes. Migration 012 sweep-ID preservation is tracked separately in Issue #13. |
+| #5 | Codex | Internal management UI MVP in active development, using existing APIs and evidence-backed empty states. |
+| #9 | Codex with ZCode local support | Mimosa Node scanner timeout / incomplete coverage and precise SQL/test-fixture false-positive triage; scanning must not be disabled. |
 
-## Active work and next
+## Collaboration
 
-- Active: GitHub Issue #4, migration inspection and isolated preflight (Codex). ZCode Issue #1/#3 branches are awaiting the declared Bundle file; no ZCode code is imported or merged.
-- Next order: resolve Issue #4's migration 012 review gate; then Issue #5 visual management backend MVP.
-- Never run destructive tests against production. Use an isolated `rehouse_test` database and PostgreSQL 17.
-- Data ingestion still requires reviewable evidence and human approval; video oral prices are not platform asking prices.
-
-For owners and branch/PR rules, see [AGENT_COLLABORATION.md](AGENT_COLLABORATION.md). For detailed history, see [PROJECT_STATUS.md](PROJECT_STATUS.md), [ROADMAP.md](ROADMAP.md), and [GOAL_STATE.json](GOAL_STATE.json).
+- GitHub `main` is the only stable code source. Work on `codex/*` or `zcode/*` branches, CI + review before merge.
+- Agents document work in their PRs. Codex integration lead consolidates short state and historical records *after* merge; avoid concurrent edits to global logs.
+- Do not claim that passing synthetic tests means real-world listings, continuous collection, or NAS deployment are verified.
