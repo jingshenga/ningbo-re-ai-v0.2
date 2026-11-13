@@ -15,8 +15,9 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, rows):
+    def __init__(self, rows, unbacked_sweep_ids=0):
         self.rows = rows
+        self.unbacked_sweep_ids = unbacked_sweep_ids
         self.statements = []
 
     @contextmanager
@@ -29,19 +30,22 @@ class FakeConnection:
             return FakeResult([("public",)])
         if "information_schema.columns" in statement:
             return FakeResult(self.rows)
+        if "jsonb_array_elements_text" in statement:
+            return FakeResult([(self.unbacked_sweep_ids,)])
         return FakeResult([])
 
 
 def test_schema_inspection_is_read_only_and_reports_missing_objects():
     connection = FakeConnection([("collection_listing_reviews", "conclusion")])
 
-    schema, missing_tables, missing_columns = check_schema.inspect_schema(connection)
+    schema, missing_tables, missing_columns, unbacked_sweep_ids = check_schema.inspect_schema(connection)
 
     assert connection.statements[0] == "SET TRANSACTION READ ONLY"
     assert schema == "public"
     assert "collection_discovery_states" in missing_tables
     assert "collection_listing_reviews.conclusion" not in missing_columns
     assert "collection_listing_reviews.reviewed_at" in missing_columns
+    assert unbacked_sweep_ids is None
 
 
 def test_schema_inspection_accepts_complete_signature():
@@ -50,13 +54,14 @@ def test_schema_inspection_accepts_complete_signature():
         for table, columns in check_schema.EXPECTED_COLUMNS.items()
         for column in columns
     ]
-    schema, missing_tables, missing_columns = check_schema.inspect_schema(
-        FakeConnection(rows)
+    schema, missing_tables, missing_columns, unbacked_sweep_ids = check_schema.inspect_schema(
+        FakeConnection(rows, unbacked_sweep_ids=2)
     )
 
     assert schema == "public"
     assert missing_tables == []
     assert missing_columns == []
+    assert unbacked_sweep_ids == 2
 
 
 def test_migrations_006_to_014_have_explicit_transaction_boundaries():
