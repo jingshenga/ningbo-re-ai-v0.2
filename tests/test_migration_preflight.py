@@ -97,7 +97,7 @@ def test_schema_inspection_checks_append_only_triggers_and_constraints():
         complete_columns(),
         functions={"maintain_collection_parse_metrics"},
         triggers=[("collection_parse_attempt_metrics_trigger", "collection_parse_attempts", "maintain_collection_parse_metrics")],
-        constraints=[],
+        constraints=check_schema.EXPECTED_CONSTRAINTS - {"collection_listing_observations_review_status_check"},
         unbacked_sweep_ids=2,
     )
 

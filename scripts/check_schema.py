@@ -8,6 +8,14 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict
 
 
+def _row_value(row, key, index):
+    """Read either psycopg tuple rows or dict_row rows."""
+    try:
+        return row[key]
+    except (KeyError, TypeError):
+        return row[index]
+
+
 EXPECTED_COLUMNS = {
     "collection_discovery_states": {
         "target_id", "revision", "version", "seen_listing_ids", "last_page_url",
@@ -87,7 +95,7 @@ def inspect_schema(conn):
     """Return missing migration objects using a read-only transaction."""
     with conn.transaction():
         conn.execute("SET TRANSACTION READ ONLY")
-        schema = conn.execute("SELECT current_schema()").fetchone()[0]
+        schema = _row_value(conn.execute("SELECT current_schema()").fetchone(), "current_schema", 0)
         columns = conn.execute(
             """SELECT table_name, column_name
                FROM information_schema.columns
@@ -120,7 +128,9 @@ def inspect_schema(conn):
         ).fetchall()
 
         actual = {}
-        for table_name, column_name in columns:
+        for row in columns:
+            table_name = _row_value(row, "table_name", 0)
+            column_name = _row_value(row, "column_name", 1)
             actual.setdefault(table_name, set()).add(column_name)
         prerequisites = {
             "collection_discovery_states": {"target_id", "sweep_number", "sweep_seen_listing_ids"},
@@ -130,7 +140,7 @@ def inspect_schema(conn):
             },
         }
         if all(required <= actual.get(table, set()) for table, required in prerequisites.items()):
-            unbacked_sweep_ids = conn.execute(
+            unbacked_sweep_ids = _row_value(conn.execute(
                 """SELECT count(*)
                    FROM collection_discovery_states AS state
                    JOIN collection_targets AS target ON target.id = state.target_id
@@ -143,7 +153,7 @@ def inspect_schema(conn):
                     AND observation.source_listing_id = item.source_listing_id
                     AND observation.last_seen_sweep = state.sweep_number
                    WHERE observation.target_id IS NULL"""
-            ).fetchone()[0]
+            ).fetchone(), "count", 0)
         else:
             unbacked_sweep_ids = None
 
@@ -153,8 +163,8 @@ def inspect_schema(conn):
         for table, expected in EXPECTED_COLUMNS.items()
         for column in expected - actual.get(table, set())
     )
-    actual_functions = {row[0] for row in functions}
-    actual_triggers = {(row[0], row[1], row[2]) for row in triggers}
+    actual_functions = {_row_value(row, "proname", 0) for row in functions}
+    actual_triggers = {(_row_value(row, "tgname", 0), _row_value(row, "relname", 1), _row_value(row, "proname", 2)) for row in triggers}
     missing_functions = sorted(EXPECTED_FUNCTIONS - actual_functions)
     missing_triggers = sorted(
         f"{name} on {table}"
@@ -162,7 +172,7 @@ def inspect_schema(conn):
         if (name, table, function) not in actual_triggers
     )
     missing_constraints = sorted(
-        EXPECTED_CONSTRAINTS - {row[0] for row in constraints}
+        EXPECTED_CONSTRAINTS - {_row_value(row, "conname", 0) for row in constraints}
     )
     return (
         schema, missing_tables, missing_columns, missing_functions,
