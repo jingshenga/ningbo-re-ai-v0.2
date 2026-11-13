@@ -117,7 +117,7 @@ def main() -> None:
             if frame_url.startswith('/'):
                 frame_url = API_BASE + frame_url
             frame = client.get(frame_url, headers=headers)
-            if frame.status_code != 200 or not frame.content.startswith(b'\\xff\\xd8'):
+            if frame.status_code != 200 or not frame.content.startswith(bytes.fromhex('ffd8')):
                 fail('authenticated OCR frame evidence was not readable')
 
             with video_file.open('rb') as duplicate_stream:
