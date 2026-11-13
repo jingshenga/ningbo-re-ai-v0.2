@@ -10,12 +10,12 @@ import json
 import secrets
 import time
 import zlib
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
@@ -246,7 +246,7 @@ def admin_dashboard(request: Request):
     dtk_note = "DTK 服务已配置" if DTK_BASE_URL and DTK_API_KEY else "尚未配置 DTK 服务；实时监控不可用。"
     online_note = ("全局在线采集开关已开启；来源授权和来源开关仍会分别校验。"
                    if ENABLE_ONLINE_COLLECTION else "在线采集全局开关关闭；可导入获准 HTML 样本。")
-    body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a>
+    body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a><a href="/admin/listings">房源管理</a><a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a>
 <form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form></nav></header>
 <main><h1>项目总览</h1><p>仅显示系统实际记录；没有数据时不会生成演示房源。</p>
 <div class="notice">{esc(online_note)}　{esc(dtk_note)}</div>
@@ -280,6 +280,30 @@ def _safe_link(value):
         return html.escape(value, quote=True)
     escaped = html.escape(value, quote=True)
     return f'<a href="{escaped}" rel="noopener noreferrer">{escaped}</a>'
+
+
+def _filter_decimal(value, name):
+    if value in (None, ""):
+        return None
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=422, detail=f"{name} must be a number") from exc
+    if result <= 0:
+        raise HTTPException(status_code=422, detail=f"{name} must be positive")
+    return result
+
+
+def _filter_integer(value, name, maximum):
+    if value in (None, ""):
+        return None
+    try:
+        result = int(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{name} must be an integer") from exc
+    if not 0 <= result <= maximum:
+        raise HTTPException(status_code=422, detail=f"{name} is out of range")
+    return result
 
 
 def _search_listings(district=None, community_name=None, min_area_sqm=None,
@@ -353,12 +377,17 @@ def _layout_fields(row, keys):
 @router.get("/admin/listings", response_class=HTMLResponse, include_in_schema=False)
 def admin_listings(request: Request, district: str | None = None,
                    community_name: str | None = None,
-                   min_area_sqm: Decimal | None = Query(default=None, gt=0),
-                   max_area_sqm: Decimal | None = Query(default=None, gt=0),
-                   min_price_wan: Decimal | None = Query(default=None, gt=0),
-                   max_price_wan: Decimal | None = Query(default=None, gt=0),
-                   min_bedrooms: int | None = Query(default=None, ge=0, le=20)):
+                   min_area_sqm: str | None = None, max_area_sqm: str | None = None,
+                   min_price_wan: str | None = None, max_price_wan: str | None = None,
+                   min_bedrooms: str | None = None):
     _check_admin(request)
+    min_area_sqm = _filter_decimal(min_area_sqm, "min_area_sqm")
+    max_area_sqm = _filter_decimal(max_area_sqm, "max_area_sqm")
+    min_price_wan = _filter_decimal(min_price_wan, "min_price_wan")
+    max_price_wan = _filter_decimal(max_price_wan, "max_price_wan")
+    min_bedrooms = _filter_integer(min_bedrooms, "min_bedrooms", 20)
+    district = district or None
+    community_name = community_name or None
     if min_area_sqm and max_area_sqm and min_area_sqm > max_area_sqm:
         raise HTTPException(status_code=422, detail="面积下限不能大于上限")
     if min_price_wan and max_price_wan and min_price_wan > max_price_wan:
@@ -414,6 +443,7 @@ def admin_candidates(request: Request, status: str = "pending", source: str | No
     _check_admin(request)
     if status not in ("pending", "approved", "rejected"):
         raise HTTPException(status_code=422, detail="Invalid review status")
+    source = source or None
     if source not in (None, "beike", "anjuke"):
         raise HTTPException(status_code=422, detail="Invalid source")
     rows = collection_service.candidates(status=status, source=source, limit=200)
@@ -470,7 +500,7 @@ def admin_candidate_detail(request: Request, candidate_id: UUID, message: str = 
 @router.post("/admin/candidates/{candidate_id}", include_in_schema=False)
 async def admin_correct_candidate(request: Request, candidate_id: UUID):
     _check_admin(request)
-    values = await _request_form(request)
+    values = await _request_form(request, max_bytes=65536)
     _verify_csrf(request, values)
     names = ("source_listing_id", "title", "community_name", "district", "area_sqm",
              "bedrooms", "floor_text", "decoration", "asking_price_wan")
@@ -487,7 +517,7 @@ async def admin_correct_candidate(request: Request, candidate_id: UUID):
 @router.post("/admin/candidates/{candidate_id}/review", include_in_schema=False)
 async def admin_review_candidate(request: Request, candidate_id: UUID):
     _check_admin(request)
-    values = await _request_form(request)
+    values = await _request_form(request, max_bytes=65536)
     _verify_csrf(request, values)
     decision = values.get("decision", [""])[0]
     note = values.get("review_note", [""])[0]
