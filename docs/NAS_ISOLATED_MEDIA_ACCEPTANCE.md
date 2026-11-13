@@ -32,7 +32,7 @@ scripts/nas_media_uat.sh accept
 首次启动时脚本创建权限为 0600 的 `.env.uat`，随机生成独立数据库密码与 API key，不会打印凭据。Compose 会：
 
 1. 仅构建并启动隔离项目的 PG17、API、worker。
-2. 等待 PG17 就绪并检查迁移 001–014 的最新签名对象。
+2. 等待 PG17 就绪并用失败即退出的 PostgreSQL DO 断言逐个检查 001–014 的关键表、列、索引与触发器签名。
 3. 检查 FFmpeg、RapidOCR 包/模型初始化和现有管理后台登录页。
 4. 用 FFmpeg 生成合成 MP4，创建合成视频行，以手工 OCR 文本写入既有 enrichment API。
 5. 核实视频处于 `enriched` 且保留提取字段；脚本另输出挂牌及历史价格表记录数，视频步骤不调用挂牌写入接口。
