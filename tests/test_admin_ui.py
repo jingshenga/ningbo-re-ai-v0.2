@@ -241,7 +241,7 @@ def test_review_accepts_maximum_length_chinese_note(monkeypatch):
     client.post("/admin/login", data={"password": "test-admin-key"}, follow_redirects=False)
     page = client.get("/admin/")
     csrf = re.search(r'name="csrf" value="([a-f0-9]+)"', page.text).group(1)
-    note = "已核验" * 333 + "结束"
+    note = "审" * 1000
 
     response = client.post(f"/admin/candidates/{uuid4()}/review", data={
         "csrf": csrf, "decision": "approve", "review_note": note,
