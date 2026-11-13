@@ -48,6 +48,7 @@ def import_candidate(html_text, label):
     form.get_by_role("button", name="解析并创建待审核候选").click()
     page.get_by_role("heading", name="候选详情").wait_for()
     assert "样本已解析并进入待审核" in page.locator("body").inner_text()
+    assert "pending" in page.locator("body").inner_text()
     candidate_id = urlparse(page.url).path.split("/")[-1]
     records[label + "_candidate_id"] = candidate_id
     assert_no_api_key_in_browser()
