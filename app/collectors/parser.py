@@ -19,7 +19,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 from app.collectors.url_policy import CollectionError
 
-PARSER_VERSION = 'generic-labelled-v0.2.167'
+PARSER_VERSION = 'generic-labelled-v0.2.168'
 INLINE_CSS_PARSE_CACHE_LIMIT = 1024
 MAX_VISIBLE_TEXT_CHARS = 35_000
 _INLINE_CSS_PARSE_CACHE: ContextVar[
@@ -1065,9 +1065,11 @@ def _parse_generic_listing_html(source_url: str, html: str,
         r'\s*(?:[（(]\s*)?元?\s*(?:[（(]\s*)?(?:[/／]|每)\s*'
         r'(?:㎡|m²|平米|平方米|平|平方)\s*(?:[）)])?'
     )
+    # Per-period unit must sit tight against the amount (3.6万/年, 3.6万元/月,
+    # 3.6万每月); separate clauses like "总价：300万 每月还贷1万元" or
+    # "总价：300万（每年物业费2000元）" must not downgrade the exact price.
     price_per_period_suffix = (
-        r'\s*(?:[（(]\s*)?元?\s*(?:[（(]\s*)?(?:[/／]|每)\s*'
-        r'(?:年|月|日|天|周|小时|季度)\s*(?:[）)])?'
+        r'元?(?:[/／]|每)(?:年|月|日|天|周|小时|季度)\s*(?:[）)])?'
     )
     def is_linked_non_listing_price(match, candidate_text: str) -> bool:
         preceding_text = candidate_text[max(0, match.start() - 32):match.start()]
