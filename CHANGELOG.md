@@ -1,3 +1,8 @@
+## 2026-11-13 Issue #4 migration preflight synchronized with main
+- PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
+- Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
+- No NAS production database, volume, Compose file, or container was modified. Real production schema and V0.1 backup remain unverified.
+
 ## 2026-11-13 ZCode双分支集成（GitHub PR #8、#7）
 - 修复：网页挂牌价格上下文解析升级`generic-labelled-v0.2.168`；评估总价、租金/年费、原总价不再当作精确挂牌价；正常挂牌价后跟月供、物业费等独立句子仍保留。解析器/评估器/API和新回归测试一起合并。
 - 测试与文档：DTK worker的`success`/`partial`/`failed`/`blocked_config`离线行为增加回归；纠正403/429当前仍只记`failed`且没有专门退避机制的说明，列出未来安全改造验收。

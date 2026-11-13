@@ -1,3 +1,8 @@
+## 2026-11-13 Issue #4 migration preflight synchronized with main
+- PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
+- Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
+- No NAS production database, volume, Compose file, or container was modified. Real production schema and V0.1 backup remain unverified.
+
 ## 2026-11-13 P0-03/P0-06 双代理PR集成与真实联调边界
 - ZCode Bundle的解析器修复经PR #8合并：`generic-labelled-v0.2.168`，排除评估/租金/原总价及单位周期报价；新增独立“每月还贷/每年物业费”上下文回归，保证正常300万挂牌价不会被误排。Issue #1完成关闭。
 - ZCode DTK worker状态契约及回归经PR #7合并：`blocked_config`、`guest_fallback→partial`、失败计数/后续轮询及首次基线单页行为经离线测试验证。已纠正文档：DTK收到403/429当前记普通`failed`，没有专用blocked状态/退避；仍待后续安全改造和获准账号实测，Issue #3继续开放。

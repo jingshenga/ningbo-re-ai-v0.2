@@ -1863,3 +1863,22 @@ def test_saved_search_matches_return_hard_matches_with_preference_order(api):
                for row in complete['matches'] if not row['preferred_community'])
     missing = client.get(f'/api/saved-searches/{uuid4()}/matches', headers=headers)
     assert missing.status_code == 404
+
+def test_readonly_schema_checker_matches_pg17_migration_schema(api):
+    from scripts.check_schema import inspect_schema
+
+    _, scoped_url = api
+    with connect_test_db(scoped_url) as conn:
+        (
+            schema, missing_tables, missing_columns, missing_functions,
+            missing_triggers, missing_constraints, unbacked_sweep_ids,
+        ) = inspect_schema(conn)
+
+    assert schema.startswith('it_')
+    assert missing_tables == []
+    assert missing_columns == []
+    assert missing_functions == []
+    assert missing_triggers == []
+    assert missing_constraints == []
+    assert unbacked_sweep_ids == 0
+

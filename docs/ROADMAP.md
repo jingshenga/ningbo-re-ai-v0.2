@@ -1,3 +1,8 @@
+## 2026-11-13 Issue #4 migration preflight synchronized with main
+- PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
+- Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
+- No NAS production database, volume, Compose file, or container was modified. Real production schema and V0.1 backup remain unverified.
+
 ## 2026-11-13 P0-03/P0-06 已合并代码与下一轮目标
 - PR #8：解析器v0.2.168的评估价/租金/原价排除及周期价紧贴判断通过测试并合并；真实站点校准仍待P0-02获准的20+20样本，不视为P0-03完成。
 - PR #7：DTK状态与失败恢复离线契约测试合并，真实3个账号/24小时巡检及403/429专用阻断/退避仍缺；P0-06不视为实测完成。

@@ -4,10 +4,10 @@
   "updated_at": "2026-11-13",
   "last_iteration": {
     "date": "2026-11-13",
-    "objective": "P0-03非挂牌价格排除修复与P0-06 DTK离线同步契约双代理PR集成",
-    "status": "merged_to_main_CI_verified_live_blocked",
-    "verification": "PR #8 parser v0.2.168 合并；PR #7 基于最新main组合CI 快速1963 passed、隔离PostgreSQL17集成31 passed；两PR的P2审查线程已解决。真实站点字段精确率、DTK 3账号24小时联调尚未验证。",
-    "deployment": "仅将代码合并到GitHub main=a26ad49；未部署NAS，未修改生产数据库schema或卷，贝壳/安居客在线采集继续OFF。"
+    "objective": "Issue #4 isolated PostgreSQL 17 migration preflight, synchronized with main",
+    "status": "merged_CI_verified_issue_13_data_preservation_gate_open",
+    "verification": "PR #10 was synchronized with main 054786c, its P2 review thread is resolved, and its CI passed after synchronization: quick suite 1962 passed and PostgreSQL 17 integration 31 passed. Isolated synthetic rehearsal applied 001–014, reran 006–014, checked selected legacy fields and rollback. Issue #13 tracks migration 012 sweep_seen_listing_ids preservation. No NAS production database was read or changed.",
+    "deployment": "No NAS production migration, volume deletion, Compose update, or deployment was performed. The temporary PG17 environment was isolated and cleaned."
   },
   "north_star": "宁波多源房源+短视频情报+可追溯价格历史+条件单+可解释的价格机会+未来撮合",
   "current_phase": "P0",

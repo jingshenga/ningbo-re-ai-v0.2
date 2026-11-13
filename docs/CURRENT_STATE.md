@@ -2,7 +2,7 @@
 
 Snapshot: 2026-11-13. This is the short handoff for coding agents; read the assigned GitHub Issue before editing.
 Repository: [jingshenga/ningbo-re-ai-v0.2](https://github.com/jingshenga/ningbo-re-ai-v0.2)
-Last verified feature integration: main commit `a26ad49` (PR #8 then PR #7). Always refresh `git rev-parse origin/main` before starting a branch.
+Main baseline after PR #11: `054786c` (2026-11-13).
 
 ## Confirmed product and code
 
@@ -26,8 +26,8 @@ Last verified feature integration: main commit `a26ad49` (PR #8 then PR #7). Alw
 | #1 | ZCode | Closed; parser PR #8 merged. |
 | #2 | Codex | Closed; CI PR #6 merged. |
 | #3 | ZCode | Offline DTK PR #7 merged; live 3-account / 24-hour acceptance outstanding, and rate-limit blocked-status hardening is a separate unimplemented task. |
-| #4 | Codex | Safe schema 006–014 diff/preflight in isolated PG17; no NAS production writes. |
-| #5 | Codex | Internal management UI for existing APIs, using real evidence and empty states. |
+| #4 | Codex | PR #10 merged after isolated PG17 preflight; no production writes. Migration 012 sweep-ID preservation is tracked separately in Issue #13. |
+| #5 | Codex | Internal management UI MVP in active development, using existing APIs and evidence-backed empty states. |
 | #9 | Codex with ZCode local support | Mimosa Node scanner timeout / incomplete coverage and precise SQL/test-fixture false-positive triage; scanning must not be disabled. |
 
 ## Collaboration
