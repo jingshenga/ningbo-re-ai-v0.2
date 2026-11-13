@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import psycopg
+from psycopg import sql
 import pytest
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
@@ -37,8 +38,8 @@ def test_012_preserves_legacy_sweep_ids_without_matching_current_observation(mon
     created = False
     try:
         with connect_test_db(DATABASE_URL, autocommit=True) as conn:
-            conn.execute(psycopg.sql.SQL("CREATE SCHEMA {}").format(
-                psycopg.sql.Identifier(schema)
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(
+                sql.Identifier(schema)
             ))
         created = True
         scoped_url = make_conninfo(DATABASE_URL, options=f"-csearch_path={schema}")
@@ -105,6 +106,6 @@ def test_012_preserves_legacy_sweep_ids_without_matching_current_observation(mon
     finally:
         if created:
             with connect_test_db(DATABASE_URL, autocommit=True) as conn:
-                conn.execute(psycopg.sql.SQL("DROP SCHEMA {} CASCADE").format(
-                    psycopg.sql.Identifier(schema)
+                conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(
+                    sql.Identifier(schema)
                 ))
