@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import os
 from uuid import UUID
 
@@ -75,6 +76,38 @@ class UploadBodyLimitMiddleware:
 
 class _UploadRequestTooLarge(Exception):
     pass
+
+
+class AdminSourceAllowlistMiddleware:
+    """Optional socket-peer allowlist for a private-LAN UAT listener."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        enabled = os.getenv('NBRE_ADMIN_ALLOWLIST_ENABLED', '').lower() in {'1', 'true', 'yes'}
+        if scope['type'] != 'http' or not enabled:
+            await self.app(scope, receive, send)
+            return
+
+        client = scope.get('client')
+        try:
+            address = ipaddress.ip_address(client[0]) if client else None
+            networks = [ipaddress.ip_network(value.strip(), strict=False)
+                        for value in os.getenv('NBRE_ADMIN_ALLOWED_CLIENTS', '').split(',')
+                        if value.strip()]
+            allowed = bool(address and (address.is_loopback or
+                                        any(address in network for network in networks)))
+        except ValueError:
+            allowed = False
+        if not allowed:
+            body = b'{"detail":"client source is not allowed"}'
+            await send({'type': 'http.response.start', 'status': 403,
+                        'headers': [(b'content-type', b'application/json'),
+                                    (b'content-length', str(len(body)).encode())]})
+            await send({'type': 'http.response.body', 'body': body})
+            return
+        await self.app(scope, receive, send)
 
 
 def _error(exc: UploadServiceError) -> JSONResponse:

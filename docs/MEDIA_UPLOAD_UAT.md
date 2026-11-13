@@ -1,6 +1,6 @@
 # 视频上传后端：DXP4800隔离验收
 
-本覆盖文件用于已有的隔离项目 `rehouse-ai-uat-20261113`，不引用生产Compose目录、生产卷或生产端口。隔离PG17卷仍为 `rehouse-ai-uat-20261113-pgdata`，API仅绑定 `127.0.0.1:18788`；视频与任务清单写入该项目独立 `data/media-uploads-uat` 目录，默认UAT上限25MiB/单文件、100MiB总配额。真实部署前先核对容器标签及挂载，禁止 `down -v`。
+本覆盖文件用于已有的隔离项目 `rehouse-ai-uat-20261113`，不引用生产Compose目录、生产卷或生产端口。隔离PG17卷仍为 `rehouse-ai-uat-20261113-pgdata`；原API端口仍仅绑定 `127.0.0.1:18788`。新增浏览器端口默认也只绑定 `127.0.0.1:18789`；需要从指定内网电脑访问时，在NAS的权限为0600的`.env.uat`中设置 `NBRE_UAT_BIND_IP` 为NAS私有IP、`NBRE_UAT_PORT` 为独立端口、`NBRE_UAT_ALLOWED_CLIENTS` 为电脑的单个IP或CIDR。该端口只绑定所填NAS私有IP，应用按TCP socket来源地址做白名单，不信任 `X-Forwarded-For`。视频与任务清单写入该项目独立 `data/media-uploads-uat` 目录，默认UAT上限25MiB/单文件、100MiB总配额。真实部署前先核对容器标签及挂载，禁止 `down -v`。
 
 ## 更新隔离API/Worker
 
@@ -31,13 +31,13 @@ docker exec rehouse-ai-uat-20261113-api-1 \
 
 ## 用户电脑访问现有后台
 
-在用户电脑开启本地SSH隧道：
+优先在用户电脑开启本地SSH隧道：
 
 ```sh
 ssh -N -L 18788:127.0.0.1:18788 notedock-nas
 ```
 
-浏览器打开 `http://127.0.0.1:18788/admin/`，登录密码使用该UAT实例的 `APP_API_KEY`。可通过SSH在NAS终端查看该隔离实例的密钥：
+浏览器打开 `http://127.0.0.1:18788/admin/`，登录密码使用该UAT实例的 `APP_API_KEY`。如果NAS的 `sshd` 禁止TCP转发，则保持API原端口回环绑定，只临时发布独立的浏览器端口到NAS私有IP，并将 `NBRE_UAT_ALLOWED_CLIENTS` 限定到用户电脑地址；此时打开 `http://<NAS私有IP>:<NBRE_UAT_PORT>/admin/`。不要改SSH服务设置或发布公网端口。可通过SSH在NAS终端查看该隔离实例的密钥：
 
 ```sh
 ssh notedock-nas 'grep "^APP_API_KEY=" /volume3/docker/rehouse-ai-uat-20261113/.env.uat'

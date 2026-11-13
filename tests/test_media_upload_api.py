@@ -9,8 +9,10 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import FastAPI
 
 from app import main
+from app.media_upload_api import AdminSourceAllowlistMiddleware
 from app.media_pipeline.errors import MediaPipelineError
 from app.media_pipeline.models import (MediaEvidence, MediaInfo, OcrItem,
                                        OcrResult, TranscriptResult)
@@ -18,6 +20,25 @@ from app.video_upload_service import UploadManager, get_upload_manager
 
 API_KEY = 'synthetic-upload-api-key'
 VALID_MP4 = b'\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isom'
+
+
+def test_private_listener_source_allowlist_uses_socket_peer_not_forwarded_headers(monkeypatch):
+    app = FastAPI()
+    app.add_middleware(AdminSourceAllowlistMiddleware)
+
+    @app.get('/admin/login')
+    def login_page():
+        return {'ok': True}
+
+    monkeypatch.setenv('NBRE_ADMIN_ALLOWLIST_ENABLED', 'true')
+    monkeypatch.setenv('NBRE_ADMIN_ALLOWED_CLIENTS', '10.10.10.89/32')
+    allowed = TestClient(app, client=('10.10.10.89', 41000))
+    blocked = TestClient(app, client=('10.10.10.90', 41000))
+    spoofed = TestClient(app, client=('10.10.10.90', 41000))
+
+    assert allowed.get('/admin/login').status_code == 200
+    assert blocked.get('/admin/login').status_code == 403
+    assert spoofed.get('/admin/login', headers={'X-Forwarded-For': '10.10.10.89'}).status_code == 403
 
 
 def fake_pipeline(path, *, asr_engine, ocr_engine, work_dir, keep_work,
