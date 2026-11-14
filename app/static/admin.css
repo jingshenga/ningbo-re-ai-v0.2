@@ -261,3 +261,38 @@ details[open] summary { margin-bottom: 8px; }
   .content { padding: 14px 12px 36px; }
   .panel { padding: 14px 14px; }
 }
+
+/* ---------- 视频素材页（PR2） ---------- */
+.dropzone {
+  border: 2px dashed #C6D3DE; border-radius: var(--radius);
+  background: #FBFCFD; padding: 34px 20px; text-align: center;
+  cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.dropzone:hover, .dropzone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone strong { display: block; font-size: 15px; margin-bottom: 4px; }
+.dropzone .muted { font-size: 12.5px; }
+.drop-feedback { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.drop-feedback.ok { color: var(--ok); }
+.drop-feedback.bad { color: var(--bad); }
+.progress {
+  height: 8px; border-radius: 999px; background: var(--line-soft);
+  overflow: hidden; margin: 12px 0 6px;
+}
+.progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .2s ease; }
+.upload-status { font-size: 13px; color: var(--muted); }
+.upload-status.bad { color: var(--bad); }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 10px 0 4px; }
+.kv div { background: #FBFCFD; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 10px 12px; }
+.kv .label { display: block; margin-bottom: 3px; }
+.kv strong { font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.hint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+@media (max-width: 700px) { .hint-grid { grid-template-columns: 1fr; } }
+.form-narrow { max-width: 640px; }
+.status-line { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.thumb { margin-top: 6px; }
+.thumb img {
+  max-height: 96px; max-width: 240px; width: auto;
+  border: 1px solid var(--line); border-radius: 8px;
+  display: block; background: #fff;
+}

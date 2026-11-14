@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import html
 import ipaddress
+import os
 import re
 import json
 import secrets
@@ -16,11 +17,16 @@ from uuid import UUID
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app import collection_service, services
 from app.admin_layout import login_shell, page_shell, static_response
+from app.admin_media_client import (MediaBackendError, MediaBackendUnavailable,
+                                     backend_base,
+                                    create_upload, fetch_frame, get_upload,
+                                    list_uploads, retry_upload)
 from app.db import session
 from app.collection_models import CandidateCorrection, HTMLPageIn
 from app.models import SavedSearchIn
@@ -252,8 +258,8 @@ def _verify_csrf(request, values):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 
-def _admin_page(title, inner, cookie, active=None, status_code=200):
-    return page_shell(title, inner, _csrf_token(cookie), active, status_code)
+def _admin_page(title, inner, cookie, active=None, status_code=200, script=None):
+    return page_shell(title, inner, _csrf_token(cookie), active, status_code, script=script)
 
 
 def _safe_link(value):
@@ -682,6 +688,325 @@ def admin_opportunities(request: Request, days: int = 30):
 <section class="panel table-wrap"><h2>同来源挂牌降价</h2><table><thead><tr><th>小区 / 来源</th><th>原价 → 现价</th><th>降幅</th><th>观察时间</th><th>价格证据 / 来源挂牌</th></tr></thead><tbody>{drop_rows}</tbody></table></section>
 <section class="panel table-wrap"><h2>其他比较线索（待核实）</h2><table><thead><tr><th>小区 / 来源</th><th>线索与理由</th><th>观察时间</th><th>来源挂牌</th></tr></thead><tbody>{other_rows}</tbody></table></section>"""
     return _admin_page("降价与挂牌机会", inner, request.cookies.get(COOKIE_NAME, ""), active="opportunities")
+
+
+@router.get("/admin/videos", response_class=HTMLResponse, include_in_schema=False)
+def admin_videos(request: Request):
+    _check_admin(request)
+    cookie = request.cookies.get(COOKIE_NAME, "")
+    base = backend_base()
+    try:
+        jobs = list_uploads(limit=50, base=base)
+        backend_note = None
+    except (MediaBackendUnavailable, MediaBackendError) as exc:
+        jobs = None
+        backend_note = str(exc)
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    status_class = {"completed": "ok", "failed": "bad", "failed_unavailable_ocr": "warn",
+                    "processing": "neutral", "queued": "neutral"}
+    rows = ""
+    if jobs:
+        rows = "".join(
+            f'<tr><td><a href="/admin/videos/{esc(job.get("upload_id"))}"><strong>{esc(job.get("title") or job.get("storage_name"))}</strong></a>'
+            f'<br><span class="muted">{esc(job.get("sha256", "")[:16])}… · {esc(job.get("size_bytes"))} 字节</span></td>'
+            f'<td><span class="tag {status_class.get(job.get("status"), "neutral")}">{esc(job.get("status"))}</span></td>'
+            f'<td>{esc(job.get("source_type"))}</td><td>{esc(job.get("updated_at"))}</td></tr>'
+            for job in jobs
+        ) or '<tr><td colspan="4" class="empty">后端已连接，但还没有上传过视频。</td></tr>'
+    if backend_note is not None:
+        banner = (f'<section class="notice warn"><strong>视频上传后端未接入。</strong> '
+                  f'按 Issue #30 合同等待后端服务部署（当前原因：{esc(backend_note)}）。'
+                  f'上传入口已停用；此页面不会展示任何虚构识别结果。</section>'
+                  f'<section class="panel"><h2>上传入口（停用）</h2>'
+                  f'<div class="empty">等待 Issue #30 上传/处理后端合并部署后，此处开放拖拽上传。</div></section>'
+                  f'<section class="panel"><h2>任务列表（不可用）</h2>'
+                  f'<div class="empty">后端接入后将在此显示上传与识别任务。</div></section>')
+    else:
+        banner = (f'<section class="panel"><h2>上传新视频'
+                  f'<span class="muted"><a href="/admin/videos/upload">打开发布页 →</a></span></h2>'
+                  f'<p class="muted">仅限有权处理的本地视频；上传后进入单任务识别队列，'
+                  f'口播/画面价格只作为待核实线索，绝不写入正式挂牌。</p></section>'
+                  f'<section class="panel table-wrap"><h2>上传与识别任务</h2>'
+                  f'<table><thead><tr><th>视频</th><th>状态</th><th>来源类型</th><th>更新时间</th></tr></thead>'
+                  f'<tbody>{rows}</tbody></table></section>')
+    return _admin_page("视频素材", banner, cookie, active="videos",
+                       script="videos.js" if backend_note is None else None)
+
+
+@router.get("/admin/videos/upload", response_class=HTMLResponse, include_in_schema=False)
+def admin_video_upload_page(request: Request):
+    _check_admin(request)
+    cookie = request.cookies.get(COOKIE_NAME, "")
+    csrf = _csrf_token(cookie)
+    base = backend_base()
+    try:
+        list_uploads(limit=1, base=base)
+        available, backend_note = True, None
+    except (MediaBackendUnavailable, MediaBackendError) as exc:
+        available, backend_note = False, str(exc)
+    source_options = "".join(
+        f'<option value="{value}">{label}</option>' for value, label in (
+            ("operator_local", "运营自摄"), ("authorized_author", "作者授权"),
+            ("licensed_platform", "平台授权")))
+    form_body = f"""<form id="video-upload-form" method="post" action="/admin/videos/upload"
+  enctype="multipart/form-data" class="panel form-narrow">
+<input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">
+<label>视频文件（mp4 / mov / m4v / mkv / webm，最大 1 GiB）</label>
+<div class="dropzone" data-dropzone data-input="file" data-feedback="drop-feedback"
+  data-allowed=".mp4,.mov,.m4v,.mkv,.webm" tabindex="0" role="button"
+  aria-label="选择或拖入视频文件">
+  <strong>点击选择或拖入视频文件</strong>
+  <span class="muted">上传到 NAS 隔离目录；处理在服务端排队执行</span>
+</div>
+<input id="file" name="file" type="file" accept=".mp4,.mov,.m4v,.mkv,.webm" required class="visually-hidden">
+<div id="drop-feedback" class="drop-feedback"></div>
+<label>来源类型<select name="source_type" required>{source_options}</select></label>
+<label>来源与授权说明（必填，至少 10 字）<textarea name="permission_note" minlength="10" maxlength="500" required
+  placeholder="例：自摄房源实拍，2026-11-12，作者本人授权系统内部处理"></textarea></label>
+<label>标题（可选）<input name="title" maxlength="200"></label>
+<label>备注（可选）<input name="description" maxlength="500"></label>
+<div id="upload-progress" class="progress" hidden><div id="upload-progress-bar" class="progress-bar"></div></div>
+<div id="upload-status" class="upload-status"></div>
+<div class="actions"><button type="submit">上传并进入识别队列</button>
+<a class="ghost button" href="/admin/videos">返回列表</a></div>
+</form>"""
+    if available:
+        inner = (f'<div class="page-head"><p>上传有权处理的本地视频；文件进入隔离存储目录，'
+                 f'由单任务队列执行 FFmpeg/RapidOCR。识别结果均为待核实线索。</p></div>{form_body}')
+        return _admin_page("上传视频素材", inner, cookie, active="videos", script="videos.js")
+    inner = (f'<section class="notice warn"><strong>视频上传后端未接入。</strong> '
+             f'按 Issue #30 合同等待后端服务部署（当前原因：{html.escape(str(backend_note))}）。'
+             f'以下表单仅为最终形态预览，已停用，不会产生任何上传。</section>'
+             f'<fieldset disabled class="form-narrow">{form_body}</fieldset>')
+    return _admin_page("上传视频素材（待接入）", inner, cookie, active="videos")
+
+
+async def _bounded_media_form(request: Request):
+    """Count raw multipart bytes *before* Starlette spools any uploaded file.
+
+    The API body-limit middleware covers only /api/media/uploads; this admin
+    proxy is independently bounded to avoid filling the NAS temp filesystem.
+    """
+    maximum = int(os.getenv("NBRE_MEDIA_UPLOAD_MAX_BYTES", str(1024 ** 3)))
+    if maximum <= 0:
+        raise HTTPException(status_code=503, detail="upload size limit is invalid")
+    limit = maximum + 128 * 1024
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            size = int(declared)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid_content_length") from None
+        if size < 0:
+            raise HTTPException(status_code=400, detail="invalid_content_length")
+        if size > limit:
+            raise HTTPException(status_code=413, detail="too_large")
+
+    received = 0
+
+    async def limited_receive():
+        nonlocal received
+        message = await request.receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > limit:
+                raise HTTPException(status_code=413, detail="too_large")
+        return message
+
+    bounded = Request(request.scope, receive=limited_receive)
+    return await bounded.form(max_files=1, max_fields=10)
+
+
+@router.post("/admin/videos/upload", include_in_schema=False)
+async def admin_video_upload_submit(request: Request):
+    _check_admin(request)
+    wants_json = "application/json" in (request.headers.get("accept") or "")
+
+    def fail(message, status=422):
+        if wants_json:
+            return JSONResponse({"error": {"message": str(message)}}, status_code=status)
+        inner = (f'<h1>视频未上传</h1><p class="notice">{html.escape(str(message))}</p>'
+                 f'<a href="/admin/videos/upload">返回上传页</a>')
+        return _admin_page("视频未上传", inner, request.cookies.get(COOKIE_NAME, ""),
+                           status_code=status)
+
+    try:
+        form = await _bounded_media_form(request)
+    except HTTPException as exc:
+        if wants_json:
+            return fail(exc.detail, status=exc.status_code)
+        raise
+
+    try:
+        values = {key: form.getlist(key) for key in form.keys()}
+        _verify_csrf(request, values)
+        upload = form.get("file")
+        source_type = (values.get("source_type") or [""])[0]
+        permission_note = (values.get("permission_note") or [""])[0]
+        title = (values.get("title") or [""])[0] or None
+        description = (values.get("description") or [""])[0] or None
+
+        if upload is None or not getattr(upload, "filename", None):
+            return fail("请选择视频文件。")
+        if len(permission_note.strip()) < 10:
+            return fail("来源与授权说明至少 10 个字符，用于记录素材权利来源。")
+        try:
+            # The API is in this same single-worker process. Blocking its
+            # event loop with a synchronous request to itself deadlocks; the
+            # threadpool leaves the loop available to serve the backend call.
+            result = await run_in_threadpool(
+                create_upload,
+                (upload.filename, upload.file,
+                 upload.content_type or "application/octet-stream"),
+                {"source_type": source_type, "permission_note": permission_note,
+                 "title": title, "description": description},
+                base=backend_base(),
+            )
+        except MediaBackendError as exc:
+            return fail("后端拒绝本次上传（" + exc.code + "）：" + exc.detail)
+        except MediaBackendUnavailable as exc:
+            return fail("上传后端不可用：" + str(exc), status=503)
+        upload_id = result.get("upload_id")
+        if not upload_id:
+            return fail("后端响应缺少 upload_id，无法进入队列。", status=502)
+        detail_url = f"/admin/videos/{upload_id}"
+        if wants_json:
+            return JSONResponse({"upload_id": upload_id, "detail_url": detail_url})
+        return RedirectResponse(detail_url, status_code=303)
+    finally:
+        await form.close()
+
+
+@router.get("/admin/videos/{upload_id}/frames/{frame_index}",
+            response_class=Response, include_in_schema=False)
+def admin_video_frame(request: Request, upload_id: str, frame_index: int):
+    """Session-authenticated proxy for the backend frames endpoint: the browser
+    never holds the X-API-Key needed by /api/media/uploads/*."""
+    _check_admin(request)
+    if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", upload_id) or not 0 <= frame_index <= 9999:
+        raise HTTPException(status_code=404, detail="Frame not found")
+    try:
+        payload, media_type = fetch_frame(upload_id, frame_index, base=backend_base())
+    except MediaBackendError as exc:
+        raise HTTPException(status_code=404, detail=f"Frame unavailable ({exc.code})") from exc
+    except MediaBackendUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"Backend unavailable ({exc})") from exc
+    return Response(payload, media_type=media_type, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/admin/videos/{upload_id}", response_class=HTMLResponse, include_in_schema=False)
+def admin_video_detail(request: Request, upload_id: str, message: str = ""):
+    _check_admin(request)
+    cookie = request.cookies.get(COOKIE_NAME, "")
+    csrf = _csrf_token(cookie)
+    message_html = (f'<section class="notice warn">{html.escape(message)}</section>' if message else "")
+    if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", upload_id):
+        raise HTTPException(status_code=404, detail="Upload not found")
+    try:
+        job = get_upload(upload_id, base=backend_base())
+    except MediaBackendUnavailable as exc:
+        inner = (f'<section class="notice warn"><strong>上传后端暂不可用：</strong>{html.escape(str(exc))}</section>'
+                 f'<a class="backlink" href="/admin/videos">返回视频素材</a>')
+        return _admin_page("视频任务", inner, cookie, active="videos")
+    except MediaBackendError as exc:
+        if exc.code == "upload_not_found" or "not found" in exc.detail.lower():
+            raise HTTPException(status_code=404, detail="Upload not found") from exc
+        inner = (f'<section class="notice warn"><strong>后端错误（{html.escape(exc.code)}）：</strong>'
+                 f'{html.escape(exc.detail)}</section><a class="backlink" href="/admin/videos">返回视频素材</a>')
+        return _admin_page("视频任务", inner, cookie, active="videos")
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    status = job.get("status")
+    status_class = {"completed": "ok", "failed": "bad", "failed_unavailable_ocr": "warn",
+                    "processing": "neutral", "queued": "neutral"}.get(status, "neutral")
+    error_html = ""
+    if job.get("error"):
+        error_html = (f'<section class="panel"><h2>失败原因</h2><p><span class="tag bad">'
+                      f'{esc(job["error"].get("code"))}</span></p><pre>{esc(job["error"].get("detail"))}</pre></section>')
+    retry_html = ""
+    if status in ("failed", "failed_unavailable_ocr"):
+        retry_label = ("OCR 组件不可用，安装依赖后重试" if status == "failed_unavailable_ocr"
+                       else "安全重试本次识别")
+        retry_html = (f'<form method="post" action="/admin/videos/{esc(upload_id)}/retry" class="actions">'
+                      f'<input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">'
+                      f'<button type="submit">{esc(retry_label)}</button></form>')
+    result = job.get("result") or {}
+    ocr = result.get("ocr") or {}
+    transcript = result.get("transcript") or {}
+    hints = result.get("hints") or {}
+    ocr_rows = "".join(
+        f'<tr><td>{esc(item.get("text"))}<div class="thumb"><img '
+        f'src="/admin/videos/{esc(upload_id)}/frames/{esc(item.get("frame_index"))}" '
+        f'alt="第 {esc(item.get("frame_index"))} 帧画面" loading="lazy"></div></td>'
+        f'<td class="num">帧 {esc(item.get("frame_index"))}</td>'
+        f'<td class="num">{esc(item.get("timestamp_seconds"))}s</td>'
+        f'<td class="num">{esc(round(item.get("confidence"), 4) if isinstance(item.get("confidence"), float) else "—")}</td></tr>'
+        for item in (ocr.get("items") or [])
+    ) or ('<tr><td colspan="4" class="empty">没有识别到画面文字。</td></tr>')
+    ocr_block = (f'<section class="panel"><h2>画面 OCR 文字<span class="muted">'
+                 f'引擎 {esc(ocr.get("engine"))} · 模型 {esc(ocr.get("model_name"))} · 状态 {esc(ocr.get("status"))}</span></h2>'
+                 f'<div class="table-wrap"><table><thead><tr><th>识别文本与来源帧画面</th><th class="num">来源帧</th>'
+                 f'<th class="num">时间点</th><th class="num">置信度</th></tr></thead><tbody>{ocr_rows}</tbody></table></div>'
+                 f'<p class="muted">帧画面经会话代理读取；完整帧证据与原始识别 JSON 保存在后端任务记录中。</p></section>'
+                 if status == "completed" else "")
+    hints_block = ""
+    if status == "completed" and hints:
+        hint_items = (
+            ("价格候选（万）", "、".join(str(v) for v in (hints.get("price_mentions_wan") or [])) or "无"),
+            ("面积候选（㎡）", "、".join(str(v) for v in (hints.get("area_mentions_sqm") or [])) or "无"),
+            ("户型候选（室）", "、".join(str(v) for v in (hints.get("bedroom_mentions") or [])) or "无"),
+            ("小区候选", "、".join(hints.get("community_mentions") or []) or "无"),
+        )
+        kv = "".join(f'<div><span class="label">{esc(label)}</span><strong>{esc(value)}</strong></div>'
+                     for label, value in hint_items)
+        hints_block = (f'<section class="panel"><h2>待核实房源线索<span class="muted">'
+                       f'置信状态 {esc(hints.get("confidence_status"))}</span></h2>'
+                       f'<div class="notice warn">{esc(hints.get("warning"))}</div>'
+                       f'<div class="kv">{kv}</div>'
+                       f'<details><summary>字段证据（quote / 来源 / 偏移）</summary>'
+                       f'<pre>{esc(json.dumps(hints.get("evidence") or [], ensure_ascii=False, indent=2))}</pre></details></section>')
+    media = job.get("result", {}).get("media") or (job.get("media") if isinstance(job.get("media"), dict) else {})
+    meta_items = (
+        ("SHA-256", (job.get("sha256") or "")[:32] + "…"),
+        ("大小", f"{job.get('size_bytes')} 字节"),
+        ("时长", f"{media.get('duration_seconds', '—')} 秒"),
+        ("音轨", "有" if media.get("has_audio") else "无"),
+        ("分辨率", f"{media.get('width') or '—'}×{media.get('height') or '—'}"),
+        ("上传时间", job.get("created_at")),
+        ("处理尝试", job.get("attempts")),
+    )
+    meta_kv = "".join(f'<div><span class="label">{esc(label)}</span><strong>{esc(value)}</strong></div>'
+                      for label, value in meta_items)
+    transcript_line = (f'<span class="tag neutral">口播转写：{esc(transcript.get("status"))}'
+                       f'（{esc(transcript.get("engine"))}）</span>' if status == "completed" else "")
+    inner = f"""<div id="video-detail" data-status="{esc(status)}" data-poll-ms="3000">
+{message_html}<div class="status-line"><span class="tag {status_class}">{esc(status)}</span>{transcript_line}
+<span class="muted">来源类型 {esc(job.get("source_type"))} · 更新 {esc(job.get("updated_at"))}</span></div>
+<p class="muted">授权说明：{esc(job.get("permission_note"))}</p>
+{error_html}
+<section class="panel"><h2>文件与处理</h2><div class="kv">{meta_kv}</div>{retry_html}</section>
+{ocr_block}
+{hints_block}
+<p class="muted">所有识别输出均为待核实线索；口播价与画面价不会写入正式挂牌或成交记录。</p>
+<a class="backlink" href="/admin/videos">返回视频素材</a></div>"""
+    return _admin_page("视频识别详情", inner, cookie, active="videos", script="videos.js")
+
+
+@router.post("/admin/videos/{upload_id}/retry", include_in_schema=False)
+async def admin_video_retry(request: Request, upload_id: str):
+    _check_admin(request)
+    values = await _request_form(request)
+    _verify_csrf(request, values)
+    if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", upload_id):
+        raise HTTPException(status_code=404, detail="Upload not found")
+    try:
+        await run_in_threadpool(retry_upload, upload_id, base=backend_base())
+    except MediaBackendError as exc:
+        message = urlencode({"message": "重试被拒绝（" + exc.code + "）：" + exc.detail})
+        return RedirectResponse(f"/admin/videos/{upload_id}?{message}", status_code=303)
+    except MediaBackendUnavailable as exc:
+        message = urlencode({"message": "上传后端不可用：" + str(exc)})
+        return RedirectResponse(f"/admin/videos/{upload_id}?{message}", status_code=303)
+    return RedirectResponse(f"/admin/videos/{upload_id}", status_code=303)
 
 
 @router.get("/admin/monitoring", response_class=HTMLResponse, include_in_schema=False)
