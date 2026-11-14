@@ -31,7 +31,7 @@ def assert_no_api_key_in_browser():
 
 def navigate(path, heading, empty_text=None, screenshot=None):
     page.goto(BASE_URL + path, wait_until="domcontentloaded")
-    page.get_by_role("heading", name=heading).wait_for()
+    page.get_by_role("heading", name=heading).first.wait_for()
     if empty_text:
         assert empty_text in page.locator("body").inner_text()
     assert_no_api_key_in_browser()
@@ -47,7 +47,7 @@ def import_candidate(html_text, label):
     form.locator("textarea[name='html']").fill(html_text)
     form.get_by_role("button", name="解析并创建待审核候选").click()
     try:
-        page.get_by_role("heading", name="候选详情").wait_for()
+        page.get_by_role("heading", name="候选详情").first.wait_for()
     except Exception as exc:
         page.screenshot(path=str(ARTIFACTS / (label + "-import-error.png")), full_page=True)
         raise AssertionError(
@@ -67,11 +67,11 @@ def approve_candidate(candidate_id, correct_fields=False, label="candidate"):
     page.goto(BASE_URL + "/admin/candidates/" + candidate_id, wait_until="domcontentloaded")
     evidence_link = page.get_by_role("link", name="查看保存的原始HTML证据")
     evidence_link.click()
-    page.get_by_role("heading", name="原始HTML证据").wait_for()
+    page.get_by_role("heading", name="原始HTML证据").first.wait_for()
     assert "东湖花园" in page.locator("body").inner_text()
     record(label + " 原始证据核查", "浏览器打开经哈希校验并转义显示的合成HTML证据", label + "-evidence.png")
     page.get_by_role("link", name="返回候选详情").click()
-    page.get_by_role("heading", name="候选详情").wait_for()
+    page.get_by_role("heading", name="候选详情").first.wait_for()
 
     if correct_fields:
         form = page.locator("form[action='/admin/candidates/" + candidate_id + "']")
@@ -109,7 +109,7 @@ def run():
         assert landing_response and landing_response.status == 401
         assert "Admin login required" in page.locator("body").inner_text()
         page.goto(BASE_URL + "/admin/login", wait_until="domcontentloaded")
-        page.get_by_role("heading", name="宁波房产工作台").wait_for()
+        page.get_by_role("heading", name="宁波房产工作台").first.wait_for()
         page.get_by_label("APP_API_KEY").fill("invalid-uat-key")
         page.get_by_role("button", name="登录").click()
         assert "API Key 不匹配" in page.locator("body").inner_text()
@@ -118,7 +118,7 @@ def run():
         page.get_by_role("link", name="返回登录").click()
         page.get_by_label("APP_API_KEY").fill(API_KEY)
         page.get_by_role("button", name="登录").click()
-        page.get_by_role("heading", name="项目总览").wait_for()
+        page.get_by_role("heading", name="项目总览").first.wait_for()
         cookies = context.cookies()
         session_cookie = next((item for item in cookies if item.get("httpOnly")), None)
         assert session_cookie and session_cookie.get("sameSite") == "Strict"
@@ -126,9 +126,9 @@ def run():
         record("登录与会话安全", "登录成功；会话Cookie为HttpOnly/SameSite=Strict；页面未泄露API Key", "dashboard-empty.png")
 
         nav_cases = [
-            ("/admin/listings", "房源管理", "尚无符合条件的正式挂牌。"),
-            ("/admin/candidates", "采集候选审核", "该筛选条件下暂无候选。"),
-            ("/admin/import", "导入获准HTML样本", None),
+            ("/admin/listings", "房源库", "尚无符合条件的正式挂牌。"),
+            ("/admin/candidates", "候选审核", "该筛选条件下暂无候选。"),
+            ("/admin/import", "HTML样本导入", None),
             ("/admin/searches", "条件找房", "尚无条件单。"),
             ("/admin/opportunities", "降价与挂牌机会", "所选时间窗内暂无同来源挂牌降价记录。"),
             ("/admin/monitoring", "视频账号监控", "尚未配置DTK服务"),
@@ -137,7 +137,7 @@ def run():
             link = page.locator("nav a[href='" + path + "']")
             if link.count():
                 link.first.click()
-                page.get_by_role("heading", name=heading).wait_for()
+                page.get_by_role("heading", name=heading).first.wait_for()
             else:
                 navigate(path, heading, empty_text)
             if empty_text:
@@ -162,12 +162,12 @@ def run():
         candidate2 = import_candidate(reduced, "price-drop")
         approve_candidate(candidate2, correct_fields=False, label="price-drop")
 
-        navigate("/admin/listings", "房源管理")
+        navigate("/admin/listings", "房源库")
         listing_link = page.locator("a[href^='/admin/listings/']").first
         listing_url = listing_link.get_attribute("href")
         assert listing_url
         page.goto(BASE_URL + listing_url, wait_until="domcontentloaded")
-        page.get_by_role("heading", name="东湖花园").wait_for()
+        page.get_by_role("heading", name="东湖花园").first.wait_for()
         assert "365.00" in page.locator("body").inner_text()
         assert "340.00" in page.locator("body").inner_text()
         assert "5室" in page.locator("body").inner_text()
@@ -185,7 +185,7 @@ def run():
         form.locator("input[name='min_area_sqm']").fill("140")
         form.locator("input[name='min_bedrooms']").fill("5")
         form.get_by_role("button", name="保存条件").click()
-        page.get_by_role("heading", name="匹配房源").wait_for()
+        page.get_by_role("heading", name="匹配房源").first.wait_for()
         assert "东湖花园" in page.locator("body").inner_text()
         match_row = page.locator("tbody tr").filter(has_text="东湖花园").first
         assert match_row.locator("td").nth(3).inner_text().strip()
