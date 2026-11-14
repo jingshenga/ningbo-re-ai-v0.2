@@ -16,12 +16,14 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # Allowed static assets: fixed names only, so user input can never select a path.
 STATIC_FILES = {
     "admin.css": ("text/css; charset=utf-8", "public, max-age=300"),
+    "videos.js": ("text/javascript; charset=utf-8", "public, max-age=300"),
 }
 
 NAV_ITEMS = (
     ("dashboard", "/admin/", "总览"),
     ("listings", "/admin/listings", "房源库"),
     ("candidates", "/admin/candidates", "候选审核"),
+    ("videos", "/admin/videos", "视频素材"),
     ("import", "/admin/import", "HTML样本导入"),
     ("searches", "/admin/searches", "条件找房"),
     ("opportunities", "/admin/opportunities", "降价机会"),
@@ -29,15 +31,21 @@ NAV_ITEMS = (
 )
 
 _SECURITY_HEADERS = {
-    "Content-Security-Policy": (
-        "default-src 'self'; script-src 'none'; style-src 'self'; "
-        "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-    ),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-store",
 }
+
+
+def _csp(with_script: bool) -> str:
+    # script-src stays 'none' everywhere except pages that load the one
+    # same-origin UI script (never inline, never a CDN).
+    script = "'self'" if with_script else "'none'"
+    return (
+        f"default-src 'self'; script-src {script}; style-src 'self'; "
+        "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    )
 
 
 def static_response(name: str) -> Response:
@@ -77,16 +85,18 @@ def logout_button(csrf: str) -> str:
 
 
 def page_shell(title: str, inner: str, csrf: str, active: str | None,
-               status_code: int = 200) -> HTMLResponse:
+               status_code: int = 200, script: str | None = None) -> HTMLResponse:
     """Standard workbench shell: sidebar + topbar + content.
 
     `csrf` is computed by the caller (app.admin_ui owns the auth primitives)
-    so this module stays free of auth logic and import cycles.
+    so this module stays free of auth logic and import cycles. `script` names
+    an optional same-origin UI script from the fixed whitelist; pages without
+    it keep a strict script-src 'none' CSP.
     """
     side = logout_button(csrf)
     body = (f'<div class="app">{_sidebar(active)}<div class="main">'
             f'{_topbar(title, side)}<main class="content">{inner}</main></div></div>')
-    return _html_response(title, body, status_code)
+    return _html_response(title, body, status_code, script=script)
 
 
 def login_shell(title: str, inner: str, status_code: int = 200) -> HTMLResponse:
@@ -94,14 +104,21 @@ def login_shell(title: str, inner: str, status_code: int = 200) -> HTMLResponse:
     return _html_response(title, body, status_code)
 
 
-def _html_response(title: str, body: str, status_code: int) -> HTMLResponse:
+def _html_response(title: str, body: str, status_code: int,
+                   script: str | None = None) -> HTMLResponse:
+    script_tag = ""
+    if script:
+        if script not in STATIC_FILES:
+            raise ValueError("unknown script asset")
+        script_tag = f'<script src="/admin/static/{script}" defer></script>'
     page = f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · 宁波房产工作台</title>
 <link rel="stylesheet" href="/admin/static/admin.css">
-</head><body>{body}</body></html>"""
+{script_tag}</head><body>{body}</body></html>"""
     response = HTMLResponse(page, status_code=status_code)
+    response.headers["Content-Security-Policy"] = _csp(script is not None)
     for name, value in _SECURITY_HEADERS.items():
         response.headers[name] = value
     return response
