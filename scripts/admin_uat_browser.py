@@ -126,9 +126,9 @@ def run():
         record("登录与会话安全", "登录成功；会话Cookie为HttpOnly/SameSite=Strict；页面未泄露API Key", "dashboard-empty.png")
 
         nav_cases = [
-            ("/admin/listings", "房源管理", "尚无符合条件的正式挂牌。"),
-            ("/admin/candidates", "采集候选审核", "该筛选条件下暂无候选。"),
-            ("/admin/import", "导入获准HTML样本", None),
+            ("/admin/listings", "房源库", "尚无符合条件的正式挂牌。"),
+            ("/admin/candidates", "候选审核", "该筛选条件下暂无候选。"),
+            ("/admin/import", "HTML样本导入", None),
             ("/admin/searches", "条件找房", "尚无条件单。"),
             ("/admin/opportunities", "降价与挂牌机会", "所选时间窗内暂无同来源挂牌降价记录。"),
             ("/admin/monitoring", "视频账号监控", "尚未配置DTK服务"),
@@ -162,7 +162,7 @@ def run():
         candidate2 = import_candidate(reduced, "price-drop")
         approve_candidate(candidate2, correct_fields=False, label="price-drop")
 
-        navigate("/admin/listings", "房源管理")
+        navigate("/admin/listings", "房源库")
         listing_link = page.locator("a[href^='/admin/listings/']").first
         listing_url = listing_link.get_attribute("href")
         assert listing_url
