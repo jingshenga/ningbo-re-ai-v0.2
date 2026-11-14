@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app import collection_service, services
+from app.admin_layout import login_shell, page_shell, static_response
 from app.db import session
 from app.collection_models import CandidateCorrection, HTMLPageIn
 from app.models import SavedSearchIn
@@ -67,29 +68,15 @@ def _check_admin(request):
 
 
 def _html_page(title, body, status_code=200):
-    page = f"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)} · 宁波房产工作台</title>
-<style>
-:root{{--ink:#172235;--muted:#64748b;--line:#e4e9f0;--paper:#f5f7fb;--blue:#2457d6;--green:#18794e;--amber:#9a5c00;--red:#b42318}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
-header{{background:#fff;border-bottom:1px solid var(--line);padding:16px max(20px,calc((100vw - 1180px)/2));display:flex;align-items:center;justify-content:space-between;gap:16px}}
-header strong{{font-size:18px}}main{{max-width:1180px;margin:28px auto;padding:0 20px}}h1{{font-size:26px;margin:0 0 6px}}h2{{font-size:18px;margin:0 0 14px}}h3{{font-size:15px;margin:0 0 10px}}p{{margin:4px 0;color:var(--muted)}}
-.grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}}.card,.panel{{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 8px #19345c08}}
-.metric{{font-size:30px;font-weight:700;margin-top:7px}}.label,.muted{{color:var(--muted);font-size:13px}}.cols{{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin:14px 0}}
-.row{{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 0;border-top:1px solid var(--line)}}.row:first-of-type{{border-top:0}}.row strong{{display:block}}.tag{{border-radius:999px;padding:3px 9px;background:#edf2ff;color:#284bb5;font-size:12px;white-space:nowrap}}.tag.ok{{background:#eaf7ef;color:var(--green)}}.tag.warn{{background:#fff5dd;color:var(--amber)}}.tag.bad{{background:#fff0ee;color:var(--red)}}
-a{{color:var(--blue);text-decoration:none}}a:hover{{text-decoration:underline}}.nav{{display:flex;gap:18px;align-items:center}}button{{border:0;background:none;color:var(--blue);font:inherit;cursor:pointer;padding:4px}}
-.empty{{padding:18px 0;color:var(--muted)}}.notice{{padding:12px 14px;background:#edf4ff;border-radius:10px;color:#294a78;margin:12px 0}}
-.login{{max-width:420px;margin:8vh auto;background:white;border:1px solid var(--line);border-radius:16px;padding:28px}}label{{display:block;font-weight:600;margin:18px 0 7px}}input,select,textarea{{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}}textarea{{min-height:180px;font-family:ui-monospace,monospace}}.filters{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}}.field-check input{{width:auto}}.filters label{{margin:0}}.table-wrap{{overflow:auto}}table{{width:100%;border-collapse:collapse;min-width:680px}}th,td{{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}}th{{color:var(--muted);font-size:13px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:12px;border-radius:8px}}.actions{{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}}.actions button,.button{{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 13px;font:inherit;cursor:pointer}}.primary{{width:100%;margin-top:20px;background:var(--blue);color:white;border:0;border-radius:8px;padding:12px;font:inherit;font-weight:650}}
-@media(max-width:760px){{.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cols{{grid-template-columns:1fr}}header{{padding:14px 18px}}main{{margin:20px auto;padding:0 14px}}.metric{{font-size:25px}}}}
-</style></head><body>{body}</body></html>"""
-    response = HTMLResponse(page, status_code=status_code)
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    """Login/standalone pages: centered card shell from the shared design system."""
+    return login_shell(title, body, status_code)
+
+
+@router.get("/admin/static/{name}", include_in_schema=False)
+def admin_static(request: Request, name: str):
+    if not _private_network_only(request):
+        raise HTTPException(status_code=403, detail="Admin UI is available only from a private network")
+    return static_response(name)
 
 
 def _form(request_body):
@@ -156,10 +143,12 @@ def admin_login(request: Request, error: str = ""):
     if _cookie_is_valid(request.cookies.get(COOKIE_NAME)):
         return RedirectResponse("/admin/", status_code=303)
     message = '<p class="notice">API Key 不匹配，请重试。</p>' if error else ""
-    body = f"""<main class="login"><h1>宁波房产工作台</h1><p>单操作者登录</p>{message}
+    body = f"""<div class="brand"><div class="brand-mark">甬</div>
+<div><div class="brand-name">宁波房产工作台</div><div class="brand-sub">数据驾驶舱 · 单操作者</div></div></div>
+{message}
 <form method="post" action="/admin/login"><label for="password">APP_API_KEY</label>
 <input id="password" name="password" type="password" autocomplete="current-password" required>
-<button class="primary" type="submit">登录</button></form></main>"""
+<button class="primary" type="submit">登录</button></form>"""
     return _html_page("登录", body)
 
 
@@ -172,7 +161,7 @@ async def admin_login_submit(request: Request):
     values = await _request_form(request)
     supplied = values.get("password", [""])[0]
     if not secrets.compare_digest(supplied.encode("utf-8"), APP_API_KEY.encode("utf-8")):
-        return _html_page("登录", '<main class="login"><h1>宁波房产工作台</h1><p class="notice">API Key 不匹配，请重试。</p><a href="/admin/login">返回登录</a></main>', 401)
+        return _html_page("登录", '<p class="notice">API Key 不匹配，请重试。</p><a href="/admin/login">返回登录</a>', 401)
     response = RedirectResponse("/admin/", status_code=303)
     response.set_cookie(COOKIE_NAME, _signed_cookie(), max_age=SESSION_SECONDS,
                         httponly=True, secure=request.url.scheme == "https",
@@ -247,15 +236,13 @@ def admin_dashboard(request: Request):
     dtk_note = "DTK 服务已配置" if DTK_BASE_URL and DTK_API_KEY else "尚未配置 DTK 服务；实时监控不可用。"
     online_note = ("全局在线采集开关已开启；来源授权和来源开关仍会分别校验。"
                    if ENABLE_ONLINE_COLLECTION else "在线采集全局开关关闭；可导入获准 HTML 样本。")
-    body = f"""<header><strong>宁波房产工作台</strong><nav class="nav"><a href="/admin/">总览</a><a href="/admin/listings">房源管理</a><a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a><a href="/admin/searches">条件找房</a><a href="/admin/opportunities">降价机会</a><a href="/admin/monitoring">视频监控</a>
-<form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form></nav></header>
-<main><h1>项目总览</h1><p>仅显示系统实际记录；没有数据时不会生成演示房源。</p>
+    body = f"""<div class="page-head"><p>仅显示系统实际记录；没有数据时不会生成演示房源。</p></div>
 <div class="notice">{esc(online_note)}　{esc(dtk_note)}</div>
 <div class="grid">{metric("在售房源", summary["listing_count"], "不含已撤牌或已售")}{metric("待审核候选", summary["pending_count"], "需要人工核验")}{metric("近 7 天新入库", summary["new_count"], "按正式挂牌创建时间")}{metric("近 30 天挂牌降价", summary["recent_price_drop_count"], "只统计同一来源挂牌历史价格确有下降；完整机会线索在机会页按需扫描")}</div>
-<div class="cols"><section class="panel"><h2>最近入库房源</h2>{listing_rows}</section><section class="panel"><h2>采集来源状态</h2>{source_rows}</section></div>
+<div class="cols"><section class="panel"><h2>最近入库房源<span class="muted"><a href="/admin/listings">查看全部 →</a></span></h2>{listing_rows}</section><section class="panel"><h2>采集来源状态</h2>{source_rows}</section></div>
 <div class="cols"><section class="panel"><h2>抖音账号监控</h2>{account_rows}<p class="muted">微信视频号使用手工导入，不显示为实时监控。</p></section><section class="panel"><h2>最近导入视频</h2>{video_rows}</section></div>
-<p class="muted">访问范围：NAS 本机或可信内网。首次登录使用服务器环境中的 APP_API_KEY；页面不向浏览器脚本提供该密钥。</p></main>"""
-    return _html_page("总览", body)
+<p class="muted">访问范围：NAS 本机或可信内网。首次登录使用服务器环境中的 APP_API_KEY；页面不向浏览器脚本提供该密钥。</p>"""
+    return _admin_page("项目总览", body, cookie, active="dashboard")
 
 
 def _verify_csrf(request, values):
@@ -265,14 +252,8 @@ def _verify_csrf(request, values):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 
-def _admin_page(title, inner, cookie, status_code=200):
-    header = f"""<header><strong>宁波房产工作台</strong><nav class="nav">
-<a href="/admin/">总览</a><a href="/admin/listings">房源管理</a>
-<a href="/admin/candidates">候选审核</a><a href="/admin/import">HTML样本导入</a>
-<a href="/admin/searches">条件找房</a><a href="/admin/opportunities">降价机会</a><a href="/admin/monitoring">视频监控</a>
-<form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{_csrf_token(cookie)}"><button type="submit">退出</button></form>
-</nav></header><main>{inner}</main>"""
-    return _html_page(title, header, status_code)
+def _admin_page(title, inner, cookie, active=None, status_code=200):
+    return page_shell(title, inner, _csrf_token(cookie), active, status_code)
 
 
 def _safe_link(value):
@@ -401,14 +382,14 @@ def admin_listings(request: Request, district: str | None = None,
                             min_price_wan, max_price_wan, min_bedrooms)
     esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
     row_html = "".join(
-        f'<tr><td><a href="/admin/listings/{esc(row["id"])}">{esc(row.get("community_name"))}</a>'
+        f'<tr><td><a href="/admin/listings/{esc(row["id"])}"><strong>{esc(row.get("community_name"))}</strong></a>'
         f'<br><span class="muted">{esc(row.get("district"))} · {esc(row.get("source"))}</span></td>'
         f'<td>{esc(row.get("area_sqm"))}㎡ · {esc(row.get("bedrooms"))}室</td>'
-        f'<td>{esc(row.get("asking_price_wan"))} 万</td>'
+        f'<td class="price">{esc(row.get("asking_price_wan"))}<span class="unit"> 万</span></td>'
         f'<td>{esc(row.get("last_observed_at"))}</td><td>{_safe_link(row.get("listing_url"))}</td></tr>'
         for row in rows
     ) or '<tr><td colspan="5" class="empty">尚无符合条件的正式挂牌。</td></tr>'
-    inner = f"""<h1>房源管理</h1><p>仅显示已审核正式挂牌。列表最多展示200条，按最近观察排序。</p>
+    inner = f"""<div class="page-head"><p>仅显示已审核正式挂牌。列表最多展示200条，按最近观察排序。</p></div>
 <form class="panel filters" method="get">
 <label>区域<input name="district" value="{esc(district or '')}"></label>
 <label>小区<input name="community_name" value="{esc(community_name or '')}"></label>
@@ -417,9 +398,9 @@ def admin_listings(request: Request, district: str | None = None,
 <label>价格下限万<input name="min_price_wan" type="number" min="0" step="0.01" value="{esc(min_price_wan or '')}"></label>
 <label>价格上限万<input name="max_price_wan" type="number" min="0" step="0.01" value="{esc(max_price_wan or '')}"></label>
 <label>最少卧室<input name="min_bedrooms" type="number" min="0" max="20" value="{esc(min_bedrooms or '')}"></label>
-<div class="actions"><button type="submit">筛选</button><a href="/admin/listings">清除条件</a></div>
-</form><section class="panel table-wrap"><table><thead><tr><th>小区 / 区域 / 来源</th><th>面积 / 户型</th><th>挂牌价</th><th>观察时间</th><th>来源链接</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
-    return _admin_page("房源管理", inner, request.cookies.get(COOKIE_NAME, ""))
+<div class="actions"><button type="submit">筛选</button><a class="ghost button" href="/admin/listings">清除条件</a></div>
+</form><section class="panel table-wrap"><table><thead><tr><th>小区 / 区域 / 来源</th><th>面积 / 户型</th><th class="num">挂牌价</th><th>观察时间</th><th>来源链接</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
+    return _admin_page("房源库", inner, request.cookies.get(COOKIE_NAME, ""), active="listings")
 
 
 @router.get("/admin/listings/{listing_id}", response_class=HTMLResponse, include_in_schema=False)
@@ -462,17 +443,17 @@ def admin_candidates(request: Request, status: str = "pending", source: str | No
         for value, label in (("", "全部"), ("beike", "贝壳"), ("anjuke", "安居客"))
     )
     row_html = "".join(
-        f'<tr><td><a href="/admin/candidates/{esc(row["id"])}">{esc(row.get("source"))} · {esc(row.get("source_listing_id"))}</a></td>'
-        f'<td>{esc((row.get("extracted_fields") or {}).get("community_name"))}<br>{esc((row.get("extracted_fields") or {}).get("asking_price_wan"))}万 / {esc((row.get("extracted_fields") or {}).get("area_sqm"))}㎡</td>'
-        f'<td>{esc(row.get("parser_version"))}<br>{esc(row.get("captured_at"))}</td>'
-        f'<td>{esc(row.get("review_status"))}</td><td>{_safe_link(row.get("source_url"))}</td></tr>'
+        f'<tr><td><a href="/admin/candidates/{esc(row["id"])}"><strong>{esc(row.get("source"))} · {esc(row.get("source_listing_id"))}</strong></a></td>'
+        f'<td>{esc((row.get("extracted_fields") or {}).get("community_name"))}<br><span class="muted">{esc((row.get("extracted_fields") or {}).get("asking_price_wan"))}万 / {esc((row.get("extracted_fields") or {}).get("area_sqm"))}㎡</span></td>'
+        f'<td><span class="muted">{esc(row.get("parser_version"))}</span><br>{esc(row.get("captured_at"))}</td>'
+        f'<td><span class="tag {"ok" if row.get("review_status") == "approved" else "bad" if row.get("review_status") == "rejected" else "warn"}">{esc(row.get("review_status"))}</span></td><td>{_safe_link(row.get("source_url"))}</td></tr>'
         for row in rows
     ) or '<tr><td colspan="5" class="empty">该筛选条件下暂无候选。</td></tr>'
-    inner = f"""<h1>采集候选审核</h1><p>审批会调用现有审核服务，并在同一事务中写入正式挂牌及价格历史。</p>
+    inner = f"""<div class="page-head"><p>采集候选审核 · 审批会调用现有审核服务，并在同一事务中写入正式挂牌及价格历史。</p></div>
 <form class="panel filters" method="get"><label>状态<select name="status">{status_options}</select></label>
 <label>来源<select name="source">{source_options}</select></label><div class="actions"><button type="submit">筛选</button></div></form>
 <section class="panel table-wrap"><table><thead><tr><th>来源 / 挂牌ID</th><th>解析房源信息</th><th>解析器 / 捕获时间</th><th>审核状态</th><th>来源链接</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
-    return _admin_page("候选审核", inner, request.cookies.get(COOKIE_NAME, ""))
+    return _admin_page("候选审核", inner, request.cookies.get(COOKIE_NAME, ""), active="candidates")
 
 
 @router.get("/admin/candidates/{candidate_id}", response_class=HTMLResponse, include_in_schema=False)
@@ -549,7 +530,7 @@ def admin_import_page(request: Request):
     _check_admin(request)
     cookie = request.cookies.get(COOKIE_NAME, "")
     csrf = _csrf_token(cookie)
-    inner = f"""<h1>导入获准HTML样本</h1><p>仅导入你有权保存和处理的页面快照。导入只创建待审核候选，不会直接创建正式挂牌。</p>
+    inner = f"""<div class="page-head"><p>导入获准HTML样本 · 仅导入你有权保存和处理的页面快照。导入只创建待审核候选，不会直接创建正式挂牌。</p></div>
 <form method="post" action="/admin/import" class="panel">
 <input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">
 <label>来源<select name="source" required><option value="beike">贝壳</option><option value="anjuke">安居客</option></select></label>
@@ -557,7 +538,7 @@ def admin_import_page(request: Request):
 <label>说明（可选）<input name="note" maxlength="500"></label>
 <label>HTML快照（最大1MB）<textarea name="html" required></textarea></label>
 <div class="actions"><button type="submit">解析并创建待审核候选</button></div></form>"""
-    return _admin_page("HTML样本导入", inner, cookie)
+    return _admin_page("HTML样本导入", inner, cookie, active="import")
 
 
 @router.post("/admin/import", include_in_schema=False)
@@ -571,7 +552,7 @@ async def admin_import_page_submit(request: Request):
     except (ValidationError, CollectionError, HTTPException) as exc:
         message = getattr(exc, "detail", None) or str(exc)
         inner = f'<h1>样本未能导入</h1><p class="notice">{html.escape(str(message))}</p><a href="/admin/import">返回表单</a>'
-        return _admin_page("导入失败", inner, request.cookies.get(COOKIE_NAME, ""), 422)
+        return _admin_page("导入失败", inner, request.cookies.get(COOKIE_NAME, ""), status_code=422)
     candidate_id = result["candidate"]["id"]
     return RedirectResponse(f"/admin/candidates/{candidate_id}?message=样本已解析并进入待审核", status_code=303)
 
@@ -601,7 +582,7 @@ def admin_saved_searches(request: Request):
         f'<td>{esc(row.get("created_at"))}</td></tr>'
         for row in rows
     ) or '<tr><td colspan="4" class="empty">尚无条件单。保存后将按现有匹配服务筛选挂牌。</td></tr>'
-    inner = f"""<h1>条件找房</h1><p>保存条件后读取现有匹配结果与逐条匹配理由。</p>
+    inner = f"""<div class="page-head"><p>保存条件后读取现有匹配结果与逐条匹配理由。</p></div>
 <form method="post" action="/admin/searches" class="panel filters">
 <input type="hidden" name="csrf" value="{html.escape(_csrf_token(request.cookies.get(COOKIE_NAME, "")), quote=True)}">
 <label>条件名称<input name="name" maxlength="120" required></label>
@@ -612,7 +593,7 @@ def admin_saved_searches(request: Request):
 <label class="field-check"><input type="checkbox" name="notifications_enabled" checked>启用站内提醒事件</label>
 <div class="actions"><button type="submit">保存条件</button></div></form>
 <section class="panel table-wrap"><h2>已保存条件</h2><table><thead><tr><th>名称</th><th>区域</th><th>预算 / 面积 / 户型</th><th>创建时间</th></tr></thead><tbody>{row_html}</tbody></table></section>"""
-    return _admin_page("条件找房", inner, request.cookies.get(COOKIE_NAME, ""))
+    return _admin_page("条件找房", inner, request.cookies.get(COOKIE_NAME, ""), active="searches")
 
 
 @router.post("/admin/searches", include_in_schema=False)
@@ -633,7 +614,7 @@ async def admin_save_search(request: Request):
     except (ValidationError, HTTPException) as exc:
         detail = getattr(exc, "detail", None) or "请检查条件字段。"
         inner = f'<h1>条件未保存</h1><p class="notice">{html.escape(str(detail))}</p><a href="/admin/searches">返回条件找房</a>'
-        return _admin_page("条件未保存", inner, request.cookies.get(COOKIE_NAME, ""), 422)
+        return _admin_page("条件未保存", inner, request.cookies.get(COOKIE_NAME, ""), status_code=422)
     return RedirectResponse(f"/admin/searches/{search['id']}/matches", status_code=303)
 
 
@@ -650,7 +631,7 @@ def admin_search_matches(request: Request, search_id: UUID):
         f'<td>{_safe_link(row.get("listing_url"))}<br>{esc(row.get("last_observed_at"))}</td></tr>'
         for row in result["matches"]
     ) or '<tr><td colspan="5" class="empty">目前没有符合条件的挂牌。</td></tr>'
-    inner = f"""<h1>匹配房源</h1><p>当前共 {esc(result["total"])} 条符合；本页最多展示100条，匹配理由由现有服务生成。</p>
+    inner = f"""<div class="page-head"><p>当前共 {esc(result["total"])} 条符合；本页最多展示100条，匹配理由由现有服务生成。</p></div>
 <section class="panel table-wrap"><table><thead><tr><th>小区 / 区域 / 来源</th><th>面积 / 户型</th><th>挂牌价</th><th>匹配理由</th><th>来源 / 观察时间</th></tr></thead><tbody>{rows}</tbody></table></section>
 <p><a href="/admin/searches">返回条件找房</a></p>"""
     return _admin_page("匹配房源", inner, request.cookies.get(COOKIE_NAME, ""))
@@ -695,12 +676,12 @@ def admin_opportunities(request: Request, days: int = 30):
         f'<option value="{value}"{" selected" if days == value else ""}>{value}天</option>'
         for value in (7, 30, 90)
     )
-    inner = f"""<h1>降价与挂牌机会</h1><p>同挂牌价格变化使用来源内历史记录；跨平台或可比挂牌只作为待核实线索，不代表已确认同套或估值。</p>
+    inner = f"""<div class="page-head"><p>同挂牌价格变化使用来源内历史记录；跨平台或可比挂牌只作为待核实线索，不代表已确认同套或估值。</p></div>
 <form method="get" class="panel filters"><label>观察窗口<select name="days">{options}</select></label><div class="actions"><button type="submit">查看</button></div></form>
 <p class="muted">现有机会服务最多扫描1200套近期观察挂牌，本页最多展示100条结果；信号计算沿用现有服务。</p>
 <section class="panel table-wrap"><h2>同来源挂牌降价</h2><table><thead><tr><th>小区 / 来源</th><th>原价 → 现价</th><th>降幅</th><th>观察时间</th><th>价格证据 / 来源挂牌</th></tr></thead><tbody>{drop_rows}</tbody></table></section>
 <section class="panel table-wrap"><h2>其他比较线索（待核实）</h2><table><thead><tr><th>小区 / 来源</th><th>线索与理由</th><th>观察时间</th><th>来源挂牌</th></tr></thead><tbody>{other_rows}</tbody></table></section>"""
-    return _admin_page("降价与挂牌机会", inner, request.cookies.get(COOKIE_NAME, ""))
+    return _admin_page("降价与挂牌机会", inner, request.cookies.get(COOKIE_NAME, ""), active="opportunities")
 
 
 @router.get("/admin/monitoring", response_class=HTMLResponse, include_in_schema=False)
@@ -737,7 +718,7 @@ def admin_monitoring(request: Request):
     ) or '<tr><td colspan="4" class="empty">尚无导入视频。</td></tr>'
     account_html = "".join(account_rows) or '<tr><td colspan="4" class="empty">尚未添加监控账号。</td></tr>'
     dtk_note = "DTK服务已配置；实际同步仍以运行记录为准。" if DTK_BASE_URL and DTK_API_KEY else "尚未配置DTK服务，抖音实时监控当前不可用。"
-    inner = f"""<h1>视频账号监控</h1><p>{esc(dtk_note)}微信视频号保持手工导入模式。</p>
+    inner = f"""<div class="page-head"><p>{esc(dtk_note)}微信视频号保持手工导入模式。</p></div>
 <section class="panel table-wrap"><h2>指定账号与同步状态</h2><table><thead><tr><th>账号</th><th>状态</th><th>最近成功/完成时间</th><th>最近运行</th></tr></thead><tbody>{account_html}</tbody></table></section>
 <section class="panel table-wrap"><h2>已导入视频与提取结果</h2><table><thead><tr><th>视频</th><th>处理状态</th><th>来源</th><th>提取信息</th></tr></thead><tbody>{video_rows}</tbody></table></section>"""
-    return _admin_page("视频账号监控", inner, request.cookies.get(COOKIE_NAME, ""))
+    return _admin_page("视频账号监控", inner, request.cookies.get(COOKIE_NAME, ""), active="monitoring")
