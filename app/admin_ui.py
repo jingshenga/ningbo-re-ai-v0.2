@@ -144,7 +144,7 @@ def admin_login(request: Request, error: str = ""):
         return RedirectResponse("/admin/", status_code=303)
     message = '<p class="notice">API Key 不匹配，请重试。</p>' if error else ""
     body = f"""<div class="brand"><div class="brand-mark">甬</div>
-<div><div class="brand-name">宁波房产工作台</div><div class="brand-sub">数据驾驶舱 · 单操作者</div></div></div>
+<div><h1 class="brand-name">宁波房产工作台</h1><div class="brand-sub">数据驾驶舱 · 单操作者</div></div></div>
 {message}
 <form method="post" action="/admin/login"><label for="password">APP_API_KEY</label>
 <input id="password" name="password" type="password" autocomplete="current-password" required>
