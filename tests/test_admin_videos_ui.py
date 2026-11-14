@@ -288,3 +288,92 @@ def test_static_assets_served_with_cache_and_type(monkeypatch):
     assert js.headers["content-type"].startswith("text/javascript")
     traversal = client.get("/admin/static/..%2Fsettings.py")
     assert traversal.status_code in (403, 404)
+
+
+def test_admin_client_private_calls_do_not_follow_environment_proxy(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(admin_media_client, "APP_API_KEY", TEST_API_KEY)
+    monkeypatch.delenv("MEDIA_UPLOAD_API_BASE", raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://203.0.113.4:3128")
+    observed = {}
+
+    def fake_request(method, url, **kwargs):
+        observed.update(method=method, url=url, kwargs=kwargs)
+        return httpx.Response(200, json={"items": [], "count": 0})
+
+    monkeypatch.setattr(admin_media_client.httpx, "request", fake_request)
+    assert admin_media_client.list_uploads(limit=1) == []
+    assert observed["url"] == "http://127.0.0.1:8000/api/media/uploads?limit=1"
+    assert observed["kwargs"]["trust_env"] is False
+    assert observed["kwargs"]["headers"]["X-API-Key"] == TEST_API_KEY
+    assert observed["kwargs"]["follow_redirects"] is False
+
+
+def test_admin_client_preserves_structured_missing_job_404(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(admin_media_client, "APP_API_KEY", TEST_API_KEY)
+    monkeypatch.delenv("MEDIA_UPLOAD_API_BASE", raising=False)
+    monkeypatch.setattr(
+        admin_media_client.httpx, "request",
+        lambda *args, **kwargs: httpx.Response(
+            404, json={"error": {"code": "upload_not_found", "detail": "missing job"}}),
+    )
+    with pytest.raises(admin_media_client.MediaBackendError) as err:
+        admin_media_client.get_upload("0123456789abcdef0123456789abcdef")
+    assert err.value.code == "upload_not_found"
+
+
+def test_admin_client_rejects_dns_name_for_credential_bearing_target():
+    with pytest.raises(admin_media_client.MediaBackendUnavailable):
+        admin_media_client._validate_base("http://localhost:8000")
+    with pytest.raises(admin_media_client.MediaBackendUnavailable):
+        admin_media_client._validate_base("http://127.0.0.1:8000/other")
+    with pytest.raises(admin_media_client.MediaBackendUnavailable):
+        admin_media_client._validate_base("http://user:password@127.0.0.1:8000")
+
+
+def test_admin_upload_rejects_body_above_limit_before_multipart_parse(monkeypatch):
+    monkeypatch.setenv("NBRE_MEDIA_UPLOAD_MAX_BYTES", "20")
+    client = client_with_key(monkeypatch)
+    login(client)
+    response = client.post(
+        "/admin/videos/upload",
+        data={"csrf": _csrf_of(client), "source_type": "operator_local",
+              "permission_note": "自摄房源视频授权内部使用"},
+        files={"file": ("oversized.mp4", io.BytesIO(b"x" * 140000), "video/mp4")},
+        headers={"Accept": "application/json"},
+    )
+    assert response.status_code == 413
+    assert "too_large" in response.json()["error"]["message"]
+
+
+def test_admin_upload_and_retry_offload_http_call_from_async_handler(monkeypatch):
+    client = client_with_key(monkeypatch)
+    login(client)
+    invoked = []
+
+    async def fake_threadpool(func, *args, **kwargs):
+        invoked.append(func.__name__)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(admin_ui, "run_in_threadpool", fake_threadpool)
+    monkeypatch.setattr(admin_ui, "create_upload",
+                        lambda file_field, fields, base=None:
+                        {"upload_id": "22222222-2222-4222-8222-222222222222"})
+    monkeypatch.setattr(admin_ui, "retry_upload", lambda upload_id, base=None: {})
+    response = client.post(
+        "/admin/videos/upload",
+        data={"csrf": _csrf_of(client), "source_type": "operator_local",
+              "permission_note": "自摄房源视频授权内部使用"},
+        files={"file": ("clip.mp4", io.BytesIO(b"video"), "video/mp4")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    response = client.post(
+        "/admin/videos/22222222-2222-4222-8222-222222222222/retry",
+        data={"csrf": _csrf_of(client)}, follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert invoked.count("<lambda>") == 2
