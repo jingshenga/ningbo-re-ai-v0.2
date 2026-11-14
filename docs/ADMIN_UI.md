@@ -45,6 +45,6 @@ docker compose up -d --build
 ## 视频素材页（UI PR2，ZCode；对接 Issue #30 后端合同）
 
 - `/admin/videos`：上传入口 + 任务列表（状态药丸：queued/processing/completed/failed/failed_unavailable_ocr）。
-- `/admin/videos/upload`：拖拽/点选上传，浏览器端预检扩展名与大小，XHR 进度条；`来源类型` 与 `来源与授权说明（≥10字）` 必填；提交经会话+CSRF 由服务端转发到 Issue #30 后端（`MEDIA_UPLOAD_API_BASE`，默认 `http://127.0.0.1:8788`），APP_API_KEY 不出服务端进程。
+- `/admin/videos/upload`：拖拽/点选上传，浏览器端根据 `NBRE_MEDIA_UPLOAD_MAX_BYTES` 展示并预检文件上限，服务器在解析 multipart 前也按相同上限加128KiB协议开销封顶，XHR 进度条；`来源类型` 与 `来源与授权说明（≥10字）` 必填；提交经会话+CSRF 由服务端转发到 Issue #30 后端（`MEDIA_UPLOAD_API_BASE` 可覆盖，默认容器内同进程 `http://127.0.0.1:8000`；绝不从浏览器 Host 头生成后端地址，且禁用环境 HTTP 代理），APP_API_KEY 不出服务端进程。
 - `/admin/videos/{id}`：状态自动刷新（3s，终态停止）、失败原因与安全重试、逐帧 OCR 文本（帧号/时间点/置信度）、待核实线索（价格/面积/户型/小区 + not_calibrated + 既有警示文案）、字段证据 quote/来源/偏移。
 - 后端未接入时页面显示明确的"未接入/待部署"状态并停用表单，不展示虚构识别结果。上传链路依赖 `python-multipart`（已加入 requirements.txt）。
