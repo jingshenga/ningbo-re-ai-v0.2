@@ -748,12 +748,15 @@ def admin_video_upload_page(request: Request):
         f'<option value="{value}">{label}</option>' for value, label in (
             ("operator_local", "运营自摄"), ("authorized_author", "作者授权"),
             ("licensed_platform", "平台授权")))
+    max_bytes = int(os.getenv("NBRE_MEDIA_UPLOAD_MAX_BYTES", str(1024 ** 3)))
+    limit_label = (f"{max_bytes / (1024 ** 3):g} GiB" if max_bytes >= 1024 ** 3
+                   else f"{max_bytes / (1024 ** 2):g} MiB")
     form_body = f"""<form id="video-upload-form" method="post" action="/admin/videos/upload"
   enctype="multipart/form-data" class="panel form-narrow">
 <input type="hidden" name="csrf" value="{html.escape(csrf, quote=True)}">
-<label>视频文件（mp4 / mov / m4v / mkv / webm，最大 1 GiB）</label>
+<label>视频文件（mp4 / mov / m4v / mkv / webm，最大 {limit_label}）</label>
 <div class="dropzone" data-dropzone data-input="file" data-feedback="drop-feedback"
-  data-allowed=".mp4,.mov,.m4v,.mkv,.webm" tabindex="0" role="button"
+  data-allowed=".mp4,.mov,.m4v,.mkv,.webm" data-max-bytes="{max_bytes}" tabindex="0" role="button"
   aria-label="选择或拖入视频文件">
   <strong>点击选择或拖入视频文件</strong>
   <span class="muted">上传到 NAS 隔离目录；处理在服务端排队执行</span>
