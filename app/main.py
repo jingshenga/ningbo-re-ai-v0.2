@@ -1,4 +1,5 @@
 """Single-operator backend. X-API-Key required for all business endpoints."""
+from contextlib import asynccontextmanager
 import secrets
 from decimal import Decimal
 from typing import Literal
@@ -17,10 +18,33 @@ from app.collection_models import (HTMLPageIn,CollectionTargetIn,CollectionTarge
                                    PolicyReviewIn,CandidateCorrection,DiscoveryStateIn,
                                    DiscoveryReviewIn)
 from app.admin_ui import router as admin_ui_router
+from app.media_upload_api import (AdminSourceAllowlistMiddleware,
+                                  UploadBodyLimitMiddleware,
+                                  router as media_upload_router)
+from app.video_upload_service import start_upload_worker, stop_upload_worker
+
+@asynccontextmanager
+async def lifespan(_app):
+    try:
+        start_upload_worker()
+    except Exception as exc:  # noqa: BLE001 - upload storage must not prevent the rest of the API from starting
+        from app.log_safety import safe_error_summary
+        import logging
+        logging.getLogger('media_uploads').error(
+            'video upload worker is unavailable: %s',
+            safe_error_summary(exc, 'media upload startup'))
+    try:
+        yield
+    finally:
+        stop_upload_worker()
+
 
 app=FastAPI(title='宁波房产 AI 数据平台 - V0.2',version='0.2.0',
+    lifespan=lifespan,
     description='指定账号监控 / 贝壳安居客采集候选审核 / 历史挂牌价 / 条件单 / 提醒事件（未接外部发送）')
 app.add_middleware(CollectionPageBodyLimitMiddleware)
+app.add_middleware(UploadBodyLimitMiddleware)
+app.add_middleware(AdminSourceAllowlistMiddleware)
 app.include_router(admin_ui_router)
 
 
@@ -31,6 +55,9 @@ def auth(x_api_key: str | None = Depends(api_key_header)):
         raise HTTPException(status_code=503,detail='APP_API_KEY is not configured')
     if not x_api_key or not secrets.compare_digest(x_api_key,APP_API_KEY):
         raise HTTPException(status_code=401,detail='Invalid X-API-Key')
+
+
+app.include_router(media_upload_router, dependencies=[Depends(auth)])
 
 
 @app.get('/healthz',tags=['system'])
