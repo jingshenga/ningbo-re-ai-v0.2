@@ -1,3 +1,7 @@
+## 2026-11-20 CreatorHub Sidecar 集成（PR #37）
+- PR #37 基于 main `646e83c` 添加 CreatorHub SQLite 只读桥接、sidecar Compose、离线测试和部署说明；对齐主项目服务/网络、修复 ingest URL 拼接，并要求显式提供 API key。Sidecar 专项 16 passed；完整本地快速套件 2141 passed、2 skipped；PR CI与合并后main CI均通过。Squash merge提交 `4585a15`。
+- 本记录仅覆盖代码集成和自动化验证；实际运行态验收属于单独的后续环节。
+
 ## 2026-11-20 Issue #30 社交线索人工采集合并（PR #35）
 - ZCode补丁 `nbre-social-ingest-2d91c74-d468bc5.patch`（SHA-256 `5d1d1fb2e582893353974d6ba151ab531aa6f235d8d107cef84c2b8610af6431`）基于main `31b3d66`审查并经PR #35 Squash Merge，main提交 `1454c98`。
 - 新增单条人工采集API、社交线索表015、Tampermonkey脚本及文档。持久层按参数绑定写入，`raw_sha256`冲突使用DO NOTHING；重复内容返回原记录，不覆盖原始证据或状态。线索不进入正式挂牌、成交价或价格历史。
