@@ -4,10 +4,10 @@
   "updated_at": "2026-11-20",
   "last_iteration": {
     "date": "2026-11-20",
-    "objective": "Issue #30 social clue intake and integration via PR #35",
-    "status": "merged_PR_CI_verified",
-    "verification": "Squash-merged at 1454c98 from main baseline 31b3d66. GitHub Actions quick suite: 2123 passed, 4 skipped, 27 subtests; PostgreSQL 17 integration: 35 passed; Admin Browser UAT workflow passed. Local quick suite: 2125 passed, 2 skipped, 27 subtests. Duplicate raw_sha256 writes do not overwrite existing clue rows.",
-    "deployment": "Fresh Compose mounts migration 015. No NAS/production database migration, volume change, live platform capture, or deployment was performed. Mimosa was unavailable in Codex; push used ordinary git push without --no-verify."
+    "objective": "CreatorHub Sidecar integration",
+    "status": "merged_CI_verified_NAS_deployment_pending",
+    "verification": "PR #37 merged to main at 4585a15. Sidecar tests: 16 passed; local quick suite: 2141 passed, 2 skipped; PR and post-merge GitHub Actions succeeded.",
+    "deployment": "Runtime deployment is a separate acceptance task and is not established by this code merge."
   },
   "north_star": "宁波多源房源+短视频情报+可追溯价格历史+条件单+可解释的价格机会+未来撮合",
   "current_phase": "P0",
@@ -117,7 +117,7 @@
       "id": "P0-10",
       "title": "社交线索人工采集入口",
       "status": "implemented",
-      "note": "2026-11-20经PR #35合并：单条人工触发采集、平台URL校验、宁波关键词筛选、SHA-256幂等存储与Tampermonkey入口；重复提交返回原记录，不覆盖。CI quick 2123 passed/4 skipped，PostgreSQL 17集成35 passed。未在NAS应用迁移015或采集真实平台页面。",
+      "note": "2026-11-20经PR #35合并人工单条社交线索入口；PR #37合并CreatorHub只读SQLite Sidecar桥接。运行态验收属于独立后续任务。PR #37 CI双检查通过，Sidecar专项16 passed，本地快速套件2141 passed/2 skipped。",
       "acceptance": "单条人工采集进入独立social_posts线索表；重复内容返回已存记录且不改变状态；需要人工复核，不写正式挂牌/成交价/价格历史。"
     }
   ],
