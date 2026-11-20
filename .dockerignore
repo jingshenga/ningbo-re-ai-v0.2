@@ -17,3 +17,5 @@ tests/
 *.sql
 *.zip
 backups/
+/creatorhub-data/
+/bridge-data/

@@ -13,3 +13,6 @@ __pycache__/
 /data/sample-manifest.csv
 backup-*.sql
 /backups/
+/creatorhub-src/
+/creatorhub-data/
+/bridge-data/

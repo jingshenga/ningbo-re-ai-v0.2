@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -31,7 +32,7 @@ from urllib.parse import urlsplit
 import httpx
 
 DEFAULT_INGEST_URL = "http://api:8000/api/v1/ingest/social"
-DEFAULT_DB_PATH = "/data/creatorhub/data.db"
+DEFAULT_DB_PATH = "/data/creatorhub/creatorhub.db"
 DEFAULT_STATE_PATH = "/data/bridge_state.json"
 DEFAULT_POLL_SECONDS = 60
 DEFAULT_BATCH_SIZE = 25
@@ -117,7 +118,32 @@ def connect_readonly(path: str) -> sqlite3.Connection:
 
 
 def fetch_rows(conn: sqlite3.Connection, last_id: int, limit: int) -> list[dict]:
-    rows = conn.execute('SELECT id, platform, post_id, source_url, title, content, author_name, publish_time, media_urls, tags, raw_html_snippet FROM posts WHERE id > ? ORDER BY id LIMIT ?', (last_id, limit)).fetchall()
+    tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "posts" in tables:
+        rows = conn.execute(
+            "SELECT id, platform, post_id, source_url, title, content, "
+            "author_name, publish_time, media_urls, tags, raw_html_snippet "
+            "FROM posts WHERE id > ? ORDER BY id LIMIT ?",
+            (last_id, limit),
+        ).fetchall()
+    elif {"contentrecord", "monitortarget"} <= tables:
+        rows = conn.execute(
+            'SELECT c.id, c.platform, c.aweme_id AS post_id, '
+            'c."desc" AS title, c."desc" AS content, '
+            'm.nickname AS author_name, '
+            "CASE WHEN c.create_time > 0 "
+            "THEN datetime(c.create_time, 'unixepoch') END AS publish_time, "
+            "'[]' AS media_urls, m.tags AS tags, "
+            "NULL AS raw_html_snippet, NULL AS source_url "
+            "FROM contentrecord AS c LEFT JOIN monitortarget AS m "
+            "ON m.id = c.target_id WHERE c.id > ? ORDER BY c.id LIMIT ?",
+            (last_id, limit),
+        ).fetchall()
+    else:
+        raise BridgeConfigError(
+            "CreatorHub database has neither the supported posts table nor "
+            "the ContentRecord/MonitorTarget schema")
     return [dict(row) for row in rows]
 
 
@@ -151,6 +177,19 @@ def parse_list_field(raw) -> list[str]:
     return cleaned
 
 
+def canonical_source_url(platform: str | None, post_id: str | None) -> str:
+    """Build a canonical public URL only for platforms with stable URL forms."""
+    post_id = str(post_id or "").strip()
+    platform = (platform or "").strip().lower()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,220}", post_id):
+        return ""
+    if platform in {"douyin", "抖音"}:
+        return f"https://www.douyin.com/video/{post_id}"
+    if platform in {"xhs", "xiaohongshu", "小红书"}:
+        return f"https://www.xiaohongshu.com/explore/{post_id}"
+    return ""
+
+
 def row_to_payload(row: dict) -> dict | None:
     """Map one CreatorHub row to the ingest payload; None when unsalvageable.
 
@@ -160,13 +199,16 @@ def row_to_payload(row: dict) -> dict | None:
     """
     content = str(row.get("content") or "").strip()
     source_url = str(row.get("source_url") or "").strip()
+    if not source_url:
+        source_url = canonical_source_url(row.get("platform"), row.get("post_id"))
     if not content or not source_url.lower().startswith("https://"):
         return None
+    title = str(row.get("title") or content).strip()
     return {
         "platform": map_platform(row.get("platform")),
         "source_url": source_url,
         "post_id": (str(row["post_id"]).strip() if row.get("post_id") else None),
-        "title": (str(row["title"]).strip()[:300] if row.get("title") else None),
+        "title": title[:300] if title else None,
         "content": content[:50000],
         "author_name": (str(row["author_name"]).strip()[:120]
                         if row.get("author_name") else None),
