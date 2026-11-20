@@ -113,6 +113,8 @@ def persist_social_post(payload: SocialPostIngestPayload,
     hints = extract_hints(payload.content, payload.title,
                           source_labels=["content", "title"],
                           known_community_names=[k for k in matched if k not in ("宁波",)])
+    if payload.attestation:
+        hints = {**hints, "attestation": payload.attestation}
     values = _row_values(payload, sha256, matched, hints)
     with session() as conn:
         existing = conn.execute(

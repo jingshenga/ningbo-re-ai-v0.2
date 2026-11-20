@@ -1,6 +1,6 @@
 # 社交线索采集助手（Tampermonkey 油猴脚本）使用说明
 
-`tools/userscripts/ningbo_re_collector.user.js` 在小红书 / 抖音 / 微信（视频号·公众号）网页上注入一个右下角悬浮按钮（`🏠 采`），把**你正在看的这一条帖子**采集为宁波房产线索，推送到你自己的 NAS 后端。
+`tools/userscripts/ningbo_re_collector.user.js`（v1.1.0）在小红书 / 抖音 / 微信（视频号·公众号）网页上注入一个右下角悬浮按钮（`🏠 采`），把**你正在看的这一条帖子**采集为宁波房产线索，推送到你自己的 NAS 后端。
 
 ## 合规边界（先读这段）
 
@@ -21,6 +21,7 @@
 2. **后端 API 地址**：默认 `http://127.0.0.1:8000`。若后端跑在 NAS 其他端口（如 UAT 的 18788），改为 `http://<NAS内网IP或回环>:<端口>`；仅允许本机/私网 HTTP(S) 地址，不能经过公网代理或填写带路径、账号、查询参数的地址；
 3. **X-API-Key**：后端配置了 `APP_API_KEY` 时必填且需与其一致；后端未配置密钥时只允许本机回环访问，此栏留空即可；
 4. 「保存设置」（GM_setValue 本地持久化，不会同步到任何云端）。
+5. API Key 默认以密码框隐藏；只有点击「显示」才会在设置面板明文显示。请求只通过 `X-API-Key` 请求头发送，密钥不会放进预览 JSON。
 
 ## 三平台操作要点
 
@@ -34,15 +35,20 @@
 
 - **宁波关联指示灯**：面板根据标题+正文匹配 `宁波/海曙/鄞州/江北/镇海/北仑/奉化/高新区/东部新城/前湾新区/余姚/慈溪/宁海/象山`；指示"未识别"时推送会被后端 422 拒绝——可在正文里人工补写地名后再推（仅在内容确实与宁波相关时）。
 - **人工微调**：标题/作者/正文均可编辑后再推送；正文为空或无宁波关键词时按钮会明确报错，不静默成功。
+- **采集依据**：推送前填写「采集依据 / 授权说明」（最多255字符），例如“公开租售房源信息核验”或“个人研究线索”。该值随帖子保存到 `extracted_hints.attestation`；示例只是占位提示，请按本次真实依据填写。
+- **二次确认**：点击「推送到系统」先显示目标 API 和将发送的完整 JSON；核对 `source_url`、数字/十六进制 `post_id`、标题、作者、正文、采集依据及媒体链接后，点击「确认推送」才发送。选择「返回修改」不会发送，预览按纯文本显示。
+- **帖子 ID**：识别常见 `/video/<数字>`、`/explore/<十六进制>` 等路径，并支持 `aweme_id`、`note_id`、`post_id`、`video_id`、`mid` 等常见 ID 查询参数；不从任意数字路径猜 ID。
 - **去重**：后端按 `platform + source_url + content` 规范化后的 SHA-256 幂等去重；重复推送返回 `duplicate`，不会产生重复记录。
 
 ## 后端接口（供核对）
 
-`POST /api/v1/ingest/social`，JSON 字段：`platform(xiaohongshu|douyin|channels|other)`、`source_url`(https)、`post_id?`、`title?`、`content`(必填)、`author_name?`、`publish_time?`、`media_urls?`(≤20)、`tags?`(≤20)、`raw_html_snippet?`。
+`POST /api/v1/ingest/social`，JSON 字段：`platform(xiaohongshu|douyin|channels|other)`、`source_url`(https)、`post_id?`、`title?`、`content`(必填)、`author_name?`、`attestation?`(≤255)、`publish_time?`、`media_urls?`(≤20)、`tags?`(≤20)、`raw_html_snippet?`。
 
 响应：`{status: stored|duplicate, id, sha256, is_ningbo_related, matched_keywords, hints}`。错误码：`not_ningbo_related`(422)、`storage_pending`(503，后端存储层未部署)、401/403（鉴权）。
 
 入库表：`social_posts`（`sql/015_social_posts.sql`）。已有 NAS 环境需按项目迁移流程单独应用该迁移；全新 Compose 初始化会自动挂载迁移文件。请勿为应用迁移删除或重建现有数据库卷。
+
+`attestation` 不改变 PostgreSQL 列结构，保存在已有 `extracted_hints` JSONB 中。相同规范化帖子再次提交时仍保持原记录不变，因此重复请求不会覆盖首次记录的采集依据。
 
 ## 常见问题
 

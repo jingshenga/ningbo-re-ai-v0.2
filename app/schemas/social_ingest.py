@@ -41,6 +41,10 @@ class SocialPostIngestPayload(BaseModel):
     title: Optional[str] = Field(default=None, max_length=300)
     content: str = Field(min_length=1, max_length=MAX_CONTENT_CHARS)
     author_name: Optional[str] = Field(default=None, max_length=120)
+    attestation: Optional[str] = Field(
+        default=None, max_length=255,
+        description="采集依据或操作员授权说明",
+    )
     publish_time: Optional[str] = Field(default=None, max_length=64)
     media_urls: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
@@ -53,6 +57,16 @@ class SocialPostIngestPayload(BaseModel):
         if not stripped:
             raise ValueError("content must not be blank")
         return stripped
+
+    @field_validator("attestation", mode="before")
+    @classmethod
+    def normalize_attestation(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped or None
 
     @field_validator("source_url")
     @classmethod

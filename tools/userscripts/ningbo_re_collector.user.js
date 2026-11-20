@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         宁波房产线索一键采集助手 (Ningbo RE Collector)
 // @namespace    https://github.com/jingshenga/ningbo-re-ai
-// @version      1.0.0
+// @version      1.1.0
 // @description  在小红书/抖音/微信视频号页面上人工一键采集当前帖子为宁波房产线索，推送到自有 NAS 后端（单条、人工触发、仅内部留存）
 // @author       ningbo-re-ai operator
 // @match        https://*.xiaohongshu.com/*
@@ -193,9 +193,26 @@
     return urls;
   }
 
+  function extractPostIdFromUrl(href) {
+    var parsed;
+    try { parsed = new URL(href); } catch (err) { return ""; }
+    var validId = /^(?:[0-9]{8,32}|[0-9a-f]{16,64})$/i;
+    var routeMatch = parsed.pathname.match(
+      /\/(?:video|explore|note|item|post|detail|article)\/([^/]+)(?:\/|$)/i);
+    if (routeMatch && validId.test(routeMatch[1])) return routeMatch[1];
+
+    var queryNames = ["aweme_id", "item_id", "note_id", "post_id", "video_id", "modal_id", "mid", "sn"];
+    for (var i = 0; i < queryNames.length; i++) {
+      var queryId = parsed.searchParams.get(queryNames[i]);
+      if (queryId && validId.test(queryId)) return queryId;
+    }
+
+    var hexPath = parsed.pathname.match(/(?:^|\/)([0-9a-f]{16,64})(?:\/|$)/i);
+    return hexPath && /[a-f]/i.test(hexPath[1]) ? hexPath[1] : "";
+  }
+
   function extractPostId() {
-    var match = location.pathname.match(/([0-9a-f]{16,64})/i);
-    return match ? match[1] : "";
+    return extractPostIdFromUrl(location.href);
   }
 
   function collectPayload(edits) {
@@ -207,6 +224,7 @@
       title: ((edits && edits.title) ? edits.title : extractTitle()) || null,
       content: content,
       author_name: ((edits && edits.author) ? edits.author : extractAuthor()) || null,
+      attestation: ((edits && edits.attestation) || "").trim() || null,
       publish_time: extractPublishTime() || null,
       media_urls: extractMediaUrls(),
       tags: [],
@@ -215,14 +233,20 @@
   }
 
   // ---------- UI：右下角悬浮按钮 + 抽屉面板（textContent 构建，防 XSS） ----------
-  var panelOpen = GM_getValue(KEY_PANEL_OPEN, false);
-
   function el(tag, className, textContent) {
     var node = document.createElement(tag);
     if (className) node.className = className;
     if (textContent !== undefined && textContent !== null) node.textContent = textContent;
     return node;
   }
+
+  // Node's built-in test runner can exercise URL parsing without a browser or network.
+  if (typeof module === "object" && module.exports) {
+    module.exports = { extractPostIdFromUrl: extractPostIdFromUrl };
+    return;
+  }
+
+  var panelOpen = GM_getValue(KEY_PANEL_OPEN, false);
 
   function buildPanel() {
     var wrap = el("div", "nbre-panel");
@@ -272,6 +296,9 @@
     var titleField = fieldRow("标题", "", false);
     var authorField = fieldRow("作者", "", false);
     var contentField = fieldRow("正文（可人工微调）", "", true);
+    var attestationField = fieldRow("采集依据 / 授权说明", "", false);
+    attestationField.placeholder = "公开租售房源信息核验/个人研究线索";
+    attestationField.maxLength = 255;
 
     var statusLine = el("div");
     statusLine.id = "nbre-status";
@@ -280,7 +307,7 @@
 
     var buttonRow = el("div");
     buttonRow.style.cssText = "display:flex;gap:8px;";
-    var pushButton = el("button", null, "一键推送");
+    var pushButton = el("button", null, "推送到系统");
     pushButton.style.cssText = "flex:1;padding:8px;border:0;border-radius:8px;background:#147D79;color:#fff;" +
       "font-weight:600;cursor:pointer;";
     var refreshButton = el("button", null, "重新提取");
@@ -295,7 +322,20 @@
     var settingsBox = el("div");
     settingsBox.style.cssText = "display:none;margin-top:10px;";
     var apiField = fieldRowIn(settingsBox, "后端 API 地址", getApiBase(), false);
-    var tokenField = fieldRowIn(settingsBox, "X-API-Key（本机开发可留空）", getToken(), false);
+    var tokenField = fieldRowIn(settingsBox, "X-API-Key（本机开发可留空）", getToken(), false, "password");
+    var tokenVisibility = el("button", null, "显示");
+    tokenVisibility.type = "button";
+    tokenVisibility.setAttribute("aria-label", "显示 API Key");
+    tokenVisibility.setAttribute("aria-pressed", "false");
+    tokenVisibility.style.cssText = "margin-top:4px;padding:4px 8px;border:0;border-radius:6px;background:#33475C;color:#fff;cursor:pointer;";
+    tokenVisibility.addEventListener("click", function () {
+      var reveal = tokenField.type === "password";
+      tokenField.type = reveal ? "text" : "password";
+      tokenVisibility.textContent = reveal ? "隐藏" : "显示";
+      tokenVisibility.setAttribute("aria-label", reveal ? "隐藏 API Key" : "显示 API Key");
+      tokenVisibility.setAttribute("aria-pressed", reveal ? "true" : "false");
+    });
+    settingsBox.appendChild(tokenVisibility);
     var saveButton = el("button", null, "保存设置");
     saveButton.style.cssText = "margin-top:8px;padding:6px 12px;border:0;border-radius:8px;background:#C48A36;color:#14263A;cursor:pointer;";
     saveButton.addEventListener("click", function () {
@@ -315,10 +355,11 @@
       settingsBox.style.display = settingsBox.style.display === "none" ? "block" : "none";
     });
 
-    function fieldRowIn(container, labelText, value, isTextarea) {
+    function fieldRowIn(container, labelText, value, isTextarea, inputType) {
       var label = el("label", null, labelText);
       label.style.cssText = "display:block;font-size:11px;color:#9FB0C0;margin:6px 0 2px;";
       var field = isTextarea ? document.createElement("textarea") : document.createElement("input");
+      if (!isTextarea) field.type = inputType || "text";
       field.value = value || "";
       field.style.cssText = "width:100%;box-sizing:border-box;padding:6px;border-radius:6px;" +
         "border:1px solid #33475C;background:#0F1B2B;color:#E8EEF4;font:12px system-ui;";
@@ -358,23 +399,84 @@
       else { fillFromPage(); }
     });
 
+    var previewModal = null;
+
+    function closePreview() {
+      if (previewModal && previewModal.parentNode) previewModal.parentNode.removeChild(previewModal);
+      previewModal = null;
+      pushButton.disabled = false;
+    }
+
+    function openPreview(payload) {
+      var overlay = el("div", "nbre-preview-overlay");
+      overlay.setAttribute("role", "presentation");
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,12,20,.78);z-index:2147483647;" +
+        "display:flex;align-items:center;justify-content:center;padding:16px;";
+      var dialog = el("section", "nbre-preview-dialog");
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-label", "确认推送内容");
+      dialog.style.cssText = "width:min(760px,96vw);max-height:90vh;overflow:auto;background:#14263A;color:#E8EEF4;" +
+        "border-radius:12px;padding:18px;font:13px/1.6 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);";
+      dialog.appendChild(el("h2", null, "请核对待发送内容"));
+      dialog.appendChild(el("p", null, "只有点击“确认推送”后才会发送这一条线索。"));
+      var target = el("p", null, "目标 API：" + getApiBase() + INGEST_PATH);
+      target.style.cssText = "overflow-wrap:anywhere;color:#9FD9C7;";
+      dialog.appendChild(target);
+      dialog.appendChild(el("div", null, "完整 JSON 载荷（以下内容将原样发送）："));
+      var previewJson = document.createElement("pre");
+      previewJson.textContent = JSON.stringify(payload, null, 2);
+      previewJson.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto;" +
+        "background:#0F1B2B;border:1px solid #33475C;border-radius:8px;padding:10px;font:12px/1.5 ui-monospace,monospace;";
+      dialog.appendChild(previewJson);
+      var actions = el("div");
+      actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;";
+      var backButton = el("button", null, "返回修改");
+      backButton.type = "button";
+      var confirmButton = el("button", null, "确认推送");
+      confirmButton.type = "button";
+      backButton.style.cssText = "padding:8px 12px;border:0;border-radius:7px;background:#33475C;color:#fff;cursor:pointer;";
+      confirmButton.style.cssText = "padding:8px 12px;border:0;border-radius:7px;background:#147D79;color:#fff;font-weight:600;cursor:pointer;";
+      backButton.addEventListener("click", closePreview);
+      confirmButton.addEventListener("click", function () {
+        confirmButton.disabled = true;
+        backButton.disabled = true;
+        closePreview();
+        showStatus("正在推送…", false);
+        pushButton.disabled = true;
+        pushPayload(payload, function (ok, message) {
+          pushButton.disabled = false;
+          showStatus(message, !ok);
+          if (ok) GM_notification({ title: "宁波线索采集", text: message });
+        });
+      });
+      actions.appendChild(backButton);
+      actions.appendChild(confirmButton);
+      dialog.appendChild(actions);
+      overlay.appendChild(dialog);
+      overlay.addEventListener("click", function (event) {
+        if (event.target === overlay) closePreview();
+      });
+      document.body.appendChild(overlay);
+      previewModal = overlay;
+      backButton.focus();
+    }
+
     pushButton.addEventListener("click", function () {
       var content = contentField.value.trim();
       if (!content) { showStatus("正文为空，无法推送。", true); return; }
+      var attestation = attestationField.value.trim();
+      if (!attestation) { showStatus("请填写采集依据 / 授权说明。", true); return; }
       var hits = matchNingbo((titleField.value || "") + " " + content);
       if (!hits.length) { showStatus("未识别到宁波关键词；后端会拒绝该条。", true); return; }
-      pushButton.disabled = true;
-      showStatus("正在推送…", false);
       var payload = collectPayload({
         title: titleField.value.trim(),
         author: authorField.value.trim(),
-        content: content
+        content: content,
+        attestation: attestation
       });
-      pushPayload(payload, function (ok, message) {
-        pushButton.disabled = false;
-        showStatus(message, !ok);
-        if (ok) GM_notification({ title: "宁波线索采集", text: message });
-      });
+      pushButton.disabled = true;
+      openPreview(payload);
     });
 
     panelRefreshers.push(updateIndicator);
