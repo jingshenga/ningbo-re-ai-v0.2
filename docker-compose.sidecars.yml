@@ -1,14 +1,6 @@
-# CreatorHub sidecar stack (isolated; overlay onto the main project only via
-# the external network below). No host ports are published: the bridge talks
-# to the main app over the container network, and CreatorHub is reachable
-# only from inside the sidecar-internal network.
-#
-# Usage (from the repo root, alongside the main compose project):
-#   docker compose -f docker-compose.sidecars.yml up -d
-#
-# The bridge only READS CreatorHub's SQLite and POSTs to the main app API;
-# it never touches PostgreSQL and never writes to CreatorHub.
-name: ningbo-re-sidecars
+# CreatorHub collection workbench and its one-way ingest bridge.
+# The UI and scan desktop are loopback-only; use SSH forwarding to reach them.
+name: creatorhub
 
 networks:
   sidecar-internal:
@@ -17,36 +9,64 @@ networks:
     external: true
     name: ${MAIN_COMPOSE_NETWORK:-ningbo-re-ai_private}
 
-volumes:
-  creatorhub-data:
-  bridge-state:
-
 services:
   creatorhub:
-    image: ${CREATORHUB_IMAGE:?set CREATORHUB_IMAGE to your CreatorHub distribution image}
-    container_name: creatorhub-app
+    build:
+      context: .
+      dockerfile: docker/creatorhub.Dockerfile
+    container_name: creatorhub
+    user: "1006:10"
+    environment:
+      CREATORHUB_CONFIG_PATH: /app/config.yaml
+      TZ: Asia/Shanghai
     volumes:
-      - creatorhub-data:/data
+      - ./creatorhub-data:/app/data
+      - ./creatorhub-data/config.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:5901:5900"
     networks:
       - sidecar-internal
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=1g
+      - /run:mode=755,size=32m
+    shm_size: 1g
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 6g
+    cpus: 3.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/health >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
   creatorhub-bridge:
     build:
       context: .
       dockerfile: docker/creatorhub-bridge.Dockerfile
     container_name: creatorhub-bridge
+    user: "1006:10"
     environment:
       MAIN_APP_INGEST_URL: ${MAIN_APP_INGEST_URL:-http://api:8000/api/v1/ingest/social}
-      MAIN_APP_API_KEY: ${MAIN_APP_API_KEY:?set MAIN_APP_API_KEY to the main app APP_API_KEY}
-      CREATORHUB_DB_PATH: /data/creatorhub/data.db
+      MAIN_APP_API_KEY: ${APP_API_KEY:?Set APP_API_KEY in the parent .env}
+      CREATORHUB_DB_PATH: /data/creatorhub/creatorhub.db
       SYNC_STATE_PATH: /state/bridge_state.json
       POLL_INTERVAL_SECONDS: "60"
       SYNC_BATCH_SIZE: "25"
     volumes:
-      - creatorhub-data:/data/creatorhub:ro
-      - bridge-state:/state
+      - ./creatorhub-data/creatorhub.db:/data/creatorhub/creatorhub.db:ro
+      - ./bridge-data:/state
     networks:
       - sidecar-internal
       - main-net
     restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5

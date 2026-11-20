@@ -15,6 +15,8 @@ from tools.bridges import creatorhub_bridge as bridge
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 SEED_SQL = (FIXTURES / "creatorhub_seed.sql").read_text(encoding="utf-8")
 POISON_SQL = (FIXTURES / "creatorhub_poison.sql").read_text(encoding="utf-8")
+CONTENT_RECORD_SQL = (FIXTURES / "creatorhub_contentrecord.sql").read_text(
+    encoding="utf-8")
 
 
 def build_hub_db(tmp_path: Path, with_poison: bool = False) -> Path:
@@ -23,6 +25,15 @@ def build_hub_db(tmp_path: Path, with_poison: bool = False) -> Path:
     conn.executescript(SEED_SQL)
     if with_poison:
         conn.executescript(POISON_SQL)
+    conn.commit()
+    conn.close()
+    return path
+
+
+def build_contentrecord_db(tmp_path: Path) -> Path:
+    path = tmp_path / "creatorhub.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(CONTENT_RECORD_SQL)
     conn.commit()
     conn.close()
     return path
@@ -95,6 +106,47 @@ def test_row_to_payload_returns_none_for_unsalvageable_rows():
     assert bridge.row_to_payload({"content": "", "source_url": "https://x/1"}) is None
     assert bridge.row_to_payload({"content": "宁波", "source_url": "http://x/1"}) is None
     assert bridge.row_to_payload({"content": "宁波"}) is None
+
+
+def test_contentrecord_schema_maps_to_ingest_payload_read_only(tmp_path):
+    db = build_contentrecord_db(tmp_path)
+    before = (db.stat().st_mtime_ns, db.stat().st_size)
+    conn = bridge.connect_readonly(str(db))
+    rows = bridge.fetch_rows(conn, 0, 10)
+    conn.close()
+
+    assert len(rows) == 1
+    payload = bridge.row_to_payload(rows[0])
+    assert payload["platform"] == "douyin"
+    assert payload["post_id"] == "7234567890123456789"
+    assert payload["source_url"] == "https://www.douyin.com/video/7234567890123456789"
+    assert payload["title"] == "宁波海曙房源线索 120㎡ 260万"
+    assert payload["content"] == payload["title"]
+    assert payload["author_name"] == "宁波看房记录"
+    assert payload["tags"] == ["宁波", "海曙"]
+    assert payload["media_urls"] == []
+    assert (db.stat().st_mtime_ns, db.stat().st_size) == before
+
+
+def test_contentrecord_bridge_sync_uses_the_canonical_source_url(tmp_path):
+    db = build_contentrecord_db(tmp_path)
+    conn = bridge.connect_readonly(str(db))
+    state = tmp_path / "state.json"
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.read())
+        return stored_response()
+
+    summary = bridge.sync_batch(
+        conn, str(state), base="http://api:8000/api/v1/ingest/social",
+        key="bridge-key", batch_size=10, transport=make_transport(handler))
+    conn.close()
+
+    assert summary["stored"] == 1
+    assert summary["last_id"] == 1
+    assert json.loads(seen[0])["source_url"] == (
+        "https://www.douyin.com/video/7234567890123456789")
 
 
 # ---------- 连接与状态文件 ----------
