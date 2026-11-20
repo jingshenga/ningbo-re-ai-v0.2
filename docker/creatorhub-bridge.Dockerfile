@@ -13,7 +13,7 @@ USER bridge
 
 # Container-network defaults; override per environment in compose.
 ENV MAIN_APP_INGEST_URL=http://api:8000/api/v1/ingest/social \
-    CREATORHUB_DB_PATH=/data/creatorhub/data.db \
+    CREATORHUB_DB_PATH=/data/creatorhub/creatorhub.db \
     SYNC_STATE_PATH=/state/bridge_state.json \
     POLL_INTERVAL_SECONDS=60 \
     SYNC_BATCH_SIZE=25
