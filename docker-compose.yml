@@ -24,6 +24,7 @@ services:
       - ./sql/012_collection_discovery_staged_ids.sql:/docker-entrypoint-initdb.d/012_collection_discovery_staged_ids.sql:ro
       - ./sql/013_account_history_backfill_cursor.sql:/docker-entrypoint-initdb.d/013_account_history_backfill_cursor.sql:ro
       - ./sql/014_collection_detail_queue.sql:/docker-entrypoint-initdb.d/014_collection_detail_queue.sql:ro
+      - ./sql/015_social_posts.sql:/docker-entrypoint-initdb.d/015_social_posts.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s

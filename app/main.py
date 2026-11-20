@@ -18,6 +18,7 @@ from app.collection_models import (HTMLPageIn,CollectionTargetIn,CollectionTarge
                                    PolicyReviewIn,CandidateCorrection,DiscoveryStateIn,
                                    DiscoveryReviewIn)
 from app.admin_ui import router as admin_ui_router
+from app.routers.social_ingest import router as social_ingest_router
 from app.media_upload_api import (AdminSourceAllowlistMiddleware,
                                   UploadBodyLimitMiddleware,
                                   router as media_upload_router)
@@ -58,6 +59,7 @@ def auth(x_api_key: str | None = Depends(api_key_header)):
 
 
 app.include_router(media_upload_router, dependencies=[Depends(auth)])
+app.include_router(social_ingest_router)
 
 
 @app.get('/healthz',tags=['system'])
