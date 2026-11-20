@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from pydantic import ValidationError
 from fastapi.testclient import TestClient
 
 from app import social_service
@@ -129,7 +130,8 @@ def test_persist_selects_duplicate_first_and_binds_all_values():
             return dict(STORED_ROW), True
 
         row, created = social_service.persist_social_post(
-            SocialPostIngestPayload(**payload()), insert_row=fake_insert)
+            SocialPostIngestPayload(**payload(attestation="  公开租售房源信息核验  ")),
+            insert_row=fake_insert)
     finally:
         social_service.session = original_session
 
@@ -142,6 +144,18 @@ def test_persist_selects_duplicate_first_and_binds_all_values():
     assert values["raw_sha256"] == social_service.compute_raw_sha256(
         "xiaohongshu", payload()["source_url"], NINGBO_POST)
     assert values["matched_keywords"] is not None  # Jsonb-wrapped keyword list
+    assert values["extracted_hints"].obj["attestation"] == "公开租售房源信息核验"
+
+
+def test_attestation_is_optional_normalized_and_limited():
+    assert SocialPostIngestPayload(**payload()).attestation is None
+    assert SocialPostIngestPayload(
+        **payload(attestation="  个人研究线索  ")).attestation == "个人研究线索"
+    assert SocialPostIngestPayload(**payload(attestation="   ")).attestation is None
+    with pytest.raises(ValidationError):
+        SocialPostIngestPayload(**payload(attestation="x" * 256))
+    with pytest.raises(ValidationError):
+        SocialPostIngestPayload(**payload(attestation=123))
 
 
 def test_persist_returns_existing_row_without_insert():

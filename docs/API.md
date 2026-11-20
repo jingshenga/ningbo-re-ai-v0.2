@@ -130,7 +130,7 @@ HTML正文上限为1,000,000 UTF-8字节；请求JSON正文最大6,100,000字节
 
 ## 社交线索人工采集
 
-`POST /api/v1/ingest/social` 接收操作者在浏览器中**主动点击采集的单条帖子**。请求需 JSON 字段 `platform`（`xiaohongshu`、`douyin`、`channels`、`other`）、HTTPS `source_url` 和非空 `content`；`post_id`、`title`、`author_name`、`publish_time`、`media_urls`、`tags`、`raw_html_snippet` 可选。平台型来源的 URL 主机必须属于对应平台；`other` 仅要求 HTTPS。正文、媒体链接和标签均有长度/数量上限，且服务器须在标题、正文或标签中识别宁波地域关键词，否则返回 `422 not_ningbo_related`。
+`POST /api/v1/ingest/social` 接收操作者在浏览器中**主动点击采集的单条帖子**。请求需 JSON 字段 `platform`（`xiaohongshu`、`douyin`、`channels`、`other`）、HTTPS `source_url` 和非空 `content`；`post_id`、`title`、`author_name`、`attestation`、`publish_time`、`media_urls`、`tags`、`raw_html_snippet` 可选。`attestation` 最多255字符，会去除首尾空白，并保存在 `extracted_hints.attestation`；旧客户端可不传。平台型来源的 URL 主机必须属于对应平台；`other` 仅要求 HTTPS。正文、媒体链接和标签均有长度/数量上限，且服务器须在标题、正文或标签中识别宁波地域关键词，否则返回 `422 not_ningbo_related`。
 
 配置 `APP_API_KEY` 后必须提供匹配的 `X-API-Key`；未配置时仅允许回环地址调用。成功响应为 `stored` 或 `duplicate`，包含记录 ID、规范化去重 SHA-256、地域命中词和标记为 `not_calibrated` 的线索。去重键由平台、来源 URL（去片段及尾部斜杠）和规范化正文构成；相同哈希不会新建或覆盖已有记录。该接口只写入 `social_posts` 线索表，不写正式挂牌、成交价或价格历史。数据库初始化会加载 `sql/015_social_posts.sql`；已有数据库必须按备份与迁移流程单独应用该迁移。
 
