@@ -223,13 +223,16 @@ def test_api_reports_storage_pending_honestly(monkeypatch):
     assert response.json()["error"]["code"] == "storage_pending"
 
 
-def test_default_store_seam_is_honest_until_backend_lands():
-    """No app/social_store.py in the tree yet → default seam must fail loudly,
-    never silently succeed."""
-    with pytest.raises(RuntimeError, match="persistence is pending"):
-        social_service.persist_social_post(
-            SocialPostIngestPayload(**payload()),
-            insert_row=None) if social_service.insert_social_post_row is None else None
+def test_default_seam_matches_documented_contract():
+    """Without app/social_store.py the default seam must fail loudly (503
+    storage_pending path); once the store lands it must resolve to a callable
+    so the endpoint flips to real persistence with zero code changes."""
+    if social_service.insert_social_post_row is None:
+        with pytest.raises(RuntimeError, match="persistence is pending"):
+            social_service.persist_social_post(
+                SocialPostIngestPayload(**payload()), insert_row=None)
+    else:
+        assert callable(social_service.insert_social_post_row)
 
 
 # ---------- 校验：非法字段 ----------
