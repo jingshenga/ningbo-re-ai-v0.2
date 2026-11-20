@@ -12,7 +12,7 @@ Main baseline after PR #37: `4585a15` (2026-11-20).
 - PR #7: DTK worker status semantics and offline regression tests merged. The DTK 403/429 path currently records ordinary `failed` (redacted), **not a dedicated blocked status or backoff**; the documentation records that implementation gap.
 - Combined PR #7 on latest parser main (2026-11-13): GitHub Actions **1963 quick tests passed**, **31 isolated PostgreSQL 17 integration tests passed**, no failing checks. These are CI results, not NAS production deployment checks.
 - PR #35: human-triggered single-post social clue intake merged. The endpoint is idempotent by normalized platform/URL/content SHA-256, leaves duplicates unchanged, and stores clues separately from official listings and price history. GitHub Actions passed: quick **2123 passed / 4 skipped**, PostgreSQL 17 **35 passed**; Admin Browser UAT workflow passed. No live platform capture was performed.
-- PR #37: CreatorHub SQLite read-only Sidecar bridge merged at `4585a15`; the bridge sends social clues through the existing ingest API and cannot access PostgreSQL. CI and local tests passed. This code merge does not mean the bridge is deployed.
+- PR #37: CreatorHub SQLite read-only Sidecar bridge merged at `4585a15`; the bridge sends social clues through the existing ingest API and cannot access PostgreSQL. CI and local tests passed. This code merge does not mean the bridge is deployed. Before enabling it on an existing deployment, verify migration 015 and all prerequisite schema updates from the selected release; take and validate a backup, rehearse in isolated PostgreSQL 17, and obtain operator approval.
 
 ## Data-source and deployment gates
 
