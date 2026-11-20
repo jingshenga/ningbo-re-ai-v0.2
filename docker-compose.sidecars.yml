@@ -1,0 +1,52 @@
+# CreatorHub sidecar stack (isolated; overlay onto the main project only via
+# the external network below). No host ports are published: the bridge talks
+# to the main app over the container network, and CreatorHub is reachable
+# only from inside the sidecar-internal network.
+#
+# Usage (from the repo root, alongside the main compose project):
+#   docker compose -f docker-compose.sidecars.yml up -d
+#
+# The bridge only READS CreatorHub's SQLite and POSTs to the main app API;
+# it never touches PostgreSQL and never writes to CreatorHub.
+name: ningbo-re-sidecars
+
+networks:
+  sidecar-internal:
+    driver: bridge
+  main-net:
+    external: true
+    name: ${MAIN_COMPOSE_NETWORK:-ningbo-re-ai_private}
+
+volumes:
+  creatorhub-data:
+  bridge-state:
+
+services:
+  creatorhub:
+    image: ${CREATORHUB_IMAGE:?set CREATORHUB_IMAGE to your CreatorHub distribution image}
+    container_name: creatorhub-app
+    volumes:
+      - creatorhub-data:/data
+    networks:
+      - sidecar-internal
+    restart: unless-stopped
+
+  creatorhub-bridge:
+    build:
+      context: .
+      dockerfile: docker/creatorhub-bridge.Dockerfile
+    container_name: creatorhub-bridge
+    environment:
+      MAIN_APP_INGEST_URL: ${MAIN_APP_INGEST_URL:-http://api:8000/api/v1/ingest/social}
+      MAIN_APP_API_KEY: ${MAIN_APP_API_KEY:?set MAIN_APP_API_KEY to the main app APP_API_KEY}
+      CREATORHUB_DB_PATH: /data/creatorhub/data.db
+      SYNC_STATE_PATH: /state/bridge_state.json
+      POLL_INTERVAL_SECONDS: "60"
+      SYNC_BATCH_SIZE: "25"
+    volumes:
+      - creatorhub-data:/data/creatorhub:ro
+      - bridge-state:/state
+    networks:
+      - sidecar-internal
+      - main-net
+    restart: unless-stopped
