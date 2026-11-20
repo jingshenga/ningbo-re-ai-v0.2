@@ -1,13 +1,13 @@
 {
   "project": "宁波房产AI情报与智能选房平台",
   "version": "0.2.0",
-  "updated_at": "2026-11-13",
+  "updated_at": "2026-11-20",
   "last_iteration": {
-    "date": "2026-11-13",
-    "objective": "Issue #4 isolated PostgreSQL 17 migration preflight, synchronized with main",
-    "status": "merged_CI_verified_issue_13_data_preservation_gate_open",
-    "verification": "PR #10 was synchronized with main 054786c, its P2 review thread is resolved, and its CI passed after synchronization: quick suite 1962 passed and PostgreSQL 17 integration 31 passed. Isolated synthetic rehearsal applied 001–014, reran 006–014, checked selected legacy fields and rollback. Issue #13 tracks migration 012 sweep_seen_listing_ids preservation. No NAS production database was read or changed.",
-    "deployment": "No NAS production migration, volume deletion, Compose update, or deployment was performed. The temporary PG17 environment was isolated and cleaned."
+    "date": "2026-11-20",
+    "objective": "Issue #30 social clue intake and integration via PR #35",
+    "status": "merged_PR_CI_verified",
+    "verification": "Squash-merged at 1454c98 from main baseline 31b3d66. GitHub Actions quick suite: 2123 passed, 4 skipped, 27 subtests; PostgreSQL 17 integration: 35 passed; Admin Browser UAT workflow passed. Local quick suite: 2125 passed, 2 skipped, 27 subtests. Duplicate raw_sha256 writes do not overwrite existing clue rows.",
+    "deployment": "Fresh Compose mounts migration 015. No NAS/production database migration, volume change, live platform capture, or deployment was performed. Mimosa was unavailable in Codex; push used ordinary git push without --no-verify."
   },
   "north_star": "宁波多源房源+短视频情报+可追溯价格历史+条件单+可解释的价格机会+未来撮合",
   "current_phase": "P0",
@@ -112,6 +112,13 @@
       "status": "implemented",
       "acceptance": "仅贝壳/安居客跨源比较；同小区同户型、面积差≤5%；挂牌单价差≥10%，按低价为分母；返回对端挂牌证据并标记待核实，不自动合并",
       "note": "用户确认阈值和公式后，/api/opportunities 已按(高单价−低单价)/低单价计算，包含恰好10%边界；对端挂牌、面积差、单价差、更新时间及candidate状态一并返回。候选挂牌时间限制为过去90天至当前时刻，不让未来时间戳参与。边界/排除条件单测及tests/test_db_integration.py端到端API/数据库候选、未来时间排除用例均通过；本轮使用仅Unix socket的临时PostgreSQL 16完整运行，108 passed、0 skipped，结束后清理。该证据不替代NAS PostgreSQL 17或部署验收。尚未NAS验收或部署。 2026-11-11离线性能准备：机会计算按小区+户型分组，只遍历同组挂牌，价格历史每次请求仅查询一次，并增加查询次数及异小区排除回归；当前环境缺少pytest，回归尚未运行，未部署或连接真实数据库。依赖桩定向smoke已通过；pytest尚未运行。 2026-11-11补充：回归现在覆盖面积较大/较小挂牌两种方向的5%边界、两侧挂牌单价恰好10%差异及9.999%排除；定向20 passed，全量505 passed、14项数据库集成跳过。仅离线测试，规则实现未更改。 2026-11-11补充：先除面积再比较单价百分比会因循环Decimal舍入漏掉数学上恰好10%的候选；现由原始金额/面积交叉相乘准确比较。回归先失败后通过。面积差分母沿用现有较小面积算法，已请求用户确认，暂未调整。 2026-11-11用户确认面积差≤5%使用较小面积作分母：abs(a-b)/min(a,b)≤0.05；与当前实现一致。 当前实现实测`area_gap_pct=abs(a-b)/min(a,b)*100`，定向`tests/test_opportunities.py`为21 passed。 2026-11-12用户再次确认面积差按较小挂牌面积作分母；现有实现为abs(a-b)/min(a,b)≤5%，符合口径。 2026-11-12：用户确认跨平台同套面积差≤5%按较小面积作分母；当前实现和双向边界测试符合该口径，无需修改业务逻辑。 2026-11-12续：docs/API.md补充面积差abs(a-b)/min(a,b)≤5%，明确较小面积为分母；与实现/测试一致，仅文档同步。tests/test_opportunities.py 21 passed，覆盖双向及5%边界；NAS尚未验收。"
+    },
+    {
+      "id": "P0-10",
+      "title": "社交线索人工采集入口",
+      "status": "implemented",
+      "note": "2026-11-20经PR #35合并：单条人工触发采集、平台URL校验、宁波关键词筛选、SHA-256幂等存储与Tampermonkey入口；重复提交返回原记录，不覆盖。CI quick 2123 passed/4 skipped，PostgreSQL 17集成35 passed。未在NAS应用迁移015或采集真实平台页面。",
+      "acceptance": "单条人工采集进入独立social_posts线索表；重复内容返回已存记录且不改变状态；需要人工复核，不写正式挂牌/成交价/价格历史。"
     }
   ],
   "confirmed_decisions": {
@@ -128,6 +135,7 @@
     ],
     "nested_article_content_price_conflict": "leave_price_empty_and_pending_manual_review",
     "equal_score_independent_root_conflicts": "clear_conflicting_fields_pending_manual_review; retain_non_conflicting_fields_without_cross_root_merge",
-    "non_exact_area": "Approximate or bounded building area leaves area_sqm blank, preserves candidate evidence, adds non_exact_area_sqm warning, and requires manual review."
+    "non_exact_area": "Approximate or bounded building area leaves area_sqm blank, preserves candidate evidence, adds non_exact_area_sqm warning, and requires manual review.",
+    "social_clue_ingest": "operator_triggered_single_item_only; no_background_or_bulk_collection; duplicates_by_normalized_platform_url_content_sha256_return_existing_row_without_overwrite; clues_never_promoted_to_listings_or_price_history"
   }
 }

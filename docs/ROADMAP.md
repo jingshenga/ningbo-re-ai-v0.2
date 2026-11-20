@@ -1,3 +1,10 @@
+## 2026-11-20 Issue #30 社交线索人工采集合并（PR #35）
+- ZCode补丁 `nbre-social-ingest-2d91c74-d468bc5.patch`（SHA-256 `5d1d1fb2e582893353974d6ba151ab531aa6f235d8d107cef84c2b8610af6431`）基于main `31b3d66`审查并经PR #35 Squash Merge，main提交 `1454c98`。
+- 新增单条人工采集API、社交线索表015、Tampermonkey脚本及文档。持久层按参数绑定写入，`raw_sha256`冲突使用DO NOTHING；重复内容返回原记录，不覆盖原始证据或状态。线索不进入正式挂牌、成交价或价格历史。
+- 同步新库Compose挂载、请求体限制、未知字段拒绝，以及脚本目标仅允许loopback/私网HTTP(S)。已有数据库卷不会自动执行015，须独立备份并按迁移流程应用；本轮没有NAS或生产数据库操作。
+- PR CI：Quick **2123 passed、4 skipped、27 subtests passed**；隔离PostgreSQL 17 **35 passed**；Admin Browser UAT workflow通过并上传24项验收产物。本机完整快速套件 **2125 passed、2 skipped、27 subtests passed**；本机Docker不可用，PG17验收由GitHub Actions完成。
+- Mimosa不在Codex执行环境中；使用普通git push，没有跳过本地钩子。未验证ZCode本机扫描器状态；未做NAS迁移或真实平台页面采集。
+
 ## 2026-11-13 Issue #4 migration preflight synchronized with main
 - PR #10 synchronized with latest main `054786c`; P2 schema-signature review was resolved. After synchronization, GitHub Actions passed: quick suite 1962 passed, 0 skipped, 27 subtests; PostgreSQL 17 integration 31 passed, 0 skipped.
 - Isolated synthetic rehearsal applied migrations 001–014, reran 006–014, checked selected legacy business fields and transaction rollback. Migration 012 sweep-only ID risk is tracked independently in Issue #13.
