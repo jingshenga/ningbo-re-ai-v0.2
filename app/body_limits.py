@@ -3,6 +3,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 MAX_COLLECTION_PAGE_BODY_BYTES = 6_100_000
+MAX_SOCIAL_INGEST_BODY_BYTES = 512_000
 
 
 class CollectionPageBodyLimitMiddleware:
@@ -10,8 +11,15 @@ class CollectionPageBodyLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (scope['type'] != 'http' or scope['method'] != 'POST'
-                or scope['path'] != '/api/collection/pages'):
+        if scope['type'] != 'http' or scope['method'] != 'POST':
+            await self.app(scope, receive, send)
+            return
+
+        limit = {
+            '/api/collection/pages': MAX_COLLECTION_PAGE_BODY_BYTES,
+            '/api/v1/ingest/social': MAX_SOCIAL_INGEST_BODY_BYTES,
+        }.get(scope['path'])
+        if limit is None:
             await self.app(scope, receive, send)
             return
 
@@ -20,7 +28,7 @@ class CollectionPageBodyLimitMiddleware:
             content_length = int(headers.get(b'content-length', b''))
         except ValueError:
             content_length = 0
-        if content_length > MAX_COLLECTION_PAGE_BODY_BYTES:
+        if content_length > limit:
             await self._reject(send)
             return
 
@@ -30,7 +38,7 @@ class CollectionPageBodyLimitMiddleware:
             if message['type'] == 'http.disconnect':
                 return
             chunk = message.get('body', b'')
-            if len(body) + len(chunk) > MAX_COLLECTION_PAGE_BODY_BYTES:
+            if len(body) + len(chunk) > limit:
                 await self._reject(send)
                 return
             body.extend(chunk)

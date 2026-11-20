@@ -18,7 +18,7 @@
 ## 配置后端地址
 
 1. 点击 `🏠 采` 展开面板 → 「设置」；
-2. **后端 API 地址**：默认 `http://127.0.0.1:8000`。若后端跑在 NAS 其他端口（如 UAT 的 18788），改为 `http://<NAS内网IP或回环>:<端口>`；仅支持 http/https 直连，请勿经过会改写来源的公网代理；
+2. **后端 API 地址**：默认 `http://127.0.0.1:8000`。若后端跑在 NAS 其他端口（如 UAT 的 18788），改为 `http://<NAS内网IP或回环>:<端口>`；仅允许本机/私网 HTTP(S) 地址，不能经过公网代理或填写带路径、账号、查询参数的地址；
 3. **X-API-Key**：后端配置了 `APP_API_KEY` 时必填且需与其一致；后端未配置密钥时只允许本机回环访问，此栏留空即可；
 4. 「保存设置」（GM_setValue 本地持久化，不会同步到任何云端）。
 
@@ -42,7 +42,7 @@
 
 响应：`{status: stored|duplicate, id, sha256, is_ningbo_related, matched_keywords, hints}`。错误码：`not_ningbo_related`(422)、`storage_pending`(503，后端存储层未部署)、401/403（鉴权）。
 
-入库表：`social_posts`（`sql/015_social_posts.sql`）。**已有 NAS 环境需手动应用迁移**：`docker compose exec db psql -U rehouse -d rehouse -f /docker-entrypoint-initdb.d/015_social_posts.sql`（或等效 psql 命令）；全新 compose 初始化需 Codex 将 015 加入挂载清单。
+入库表：`social_posts`（`sql/015_social_posts.sql`）。已有 NAS 环境需按项目迁移流程单独应用该迁移；全新 Compose 初始化会自动挂载迁移文件。请勿为应用迁移删除或重建现有数据库卷。
 
 ## 常见问题
 

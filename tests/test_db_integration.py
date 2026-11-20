@@ -125,6 +125,9 @@ def api(tmp_path, monkeypatch):
             detail_queue = (ROOT / 'sql' / '014_collection_detail_queue.sql').read_text()
             conn.execute(detail_queue)
             conn.execute(detail_queue)
+            social_posts = (ROOT / 'sql' / '015_social_posts.sql').read_text()
+            conn.execute(social_posts)
+            conn.execute(social_posts)
         from app.main import app
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client, scoped_url
@@ -132,6 +135,39 @@ def api(tmp_path, monkeypatch):
         if created:
             with connect_test_db(DATABASE_URL, autocommit=True) as conn:
                 conn.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
+
+
+def test_social_store_postgresql_insert_is_idempotent_without_overwrite(api):
+    from psycopg.types.json import Jsonb
+    from app.social_store import insert_social_post_row
+
+    _, scoped_url = api
+    values = {
+        'platform': 'xiaohongshu', 'post_id': 'fixture-001',
+        'source_url': 'https://www.xiaohongshu.com/explore/social-fixture',
+        'title': 'Original fixture title', 'content': '宁波东部新城房源线索',
+        'author_name': 'Synthetic fixture', 'publish_time': None,
+        'media_urls': Jsonb([]), 'tags': Jsonb(['宁波']),
+        'raw_html_snippet': None, 'raw_sha256': 'f' * 64,
+        'is_ningbo_related': True, 'matched_keywords': Jsonb(['宁波']),
+        'extracted_hints': Jsonb({'confidence_status': 'not_calibrated'}),
+        'status': 'new',
+    }
+    with connect_test_db(scoped_url) as conn:
+        row, inserted = insert_social_post_row(conn, values)
+    assert inserted is True
+    assert row['title'] == 'Original fixture title'
+
+    duplicate = {**values, 'title': 'Changed title', 'status': 'archived'}
+    with connect_test_db(scoped_url) as conn:
+        row, inserted = insert_social_post_row(conn, duplicate)
+        stored = conn.execute(
+            'SELECT title,status FROM social_posts WHERE raw_sha256=%s',
+            (values['raw_sha256'],),
+        ).fetchone()
+    assert row is None
+    assert inserted is False
+    assert stored == {'title': 'Original fixture title', 'status': 'new'}
 
 
 def test_v01_schema_migration_preserves_existing_data():
@@ -216,6 +252,7 @@ def test_v01_schema_migration_preserves_existing_data():
                 '012_collection_discovery_staged_ids.sql',
                 '013_account_history_backfill_cursor.sql',
                 '014_collection_detail_queue.sql',
+                '015_social_posts.sql',
             ):
                 migration = (ROOT / 'sql' / name).read_text()
                 conn.execute(migration)
@@ -387,6 +424,7 @@ def test_v02_baseline_migration_preserves_collection_data_and_parse_metrics():
                 '012_collection_discovery_staged_ids.sql',
                 '013_account_history_backfill_cursor.sql',
                 '014_collection_detail_queue.sql',
+                '015_social_posts.sql',
             )
             for name in migrations:
                 conn.execute((ROOT / 'sql' / name).read_text())

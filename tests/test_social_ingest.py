@@ -15,6 +15,7 @@ from app import social_service
 from app.main import app
 from app.routers import social_ingest
 from app.schemas.social_ingest import SocialPlatformEnum, SocialPostIngestPayload
+from app.social_store import insert_social_post_row
 
 TEST_API_KEY = os.environ.get("NBRE_TEST_API_KEY", "local-test-placeholder-key")
 
@@ -125,7 +126,7 @@ def test_persist_selects_duplicate_first_and_binds_all_values():
 
         def fake_insert(conn_, values):
             insert_calls.append((conn_, values))
-            return dict(STORED_ROW)
+            return dict(STORED_ROW), True
 
         row, created = social_service.persist_social_post(
             SocialPostIngestPayload(**payload()), insert_row=fake_insert)
@@ -150,7 +151,7 @@ def test_persist_returns_existing_row_without_insert():
 
     def fake_insert(conn_, values):
         insert_calls.append(values)
-        return existing_row
+        return existing_row, True
 
     def select_returns_existing(query, params):
         assert query.startswith("SELECT")
@@ -171,6 +172,55 @@ def test_persist_returns_existing_row_without_insert():
     assert created is False
     assert row["raw_sha256"] == STORED_ROW["raw_sha256"]
     assert insert_calls == []  # duplicate path never inserts
+
+
+def test_persist_returns_existing_row_when_concurrent_insert_wins():
+    class RaceConn:
+        def __init__(self):
+            self.selects = 0
+
+        def execute(self, query, params):
+            assert query.startswith("SELECT")
+            self.selects += 1
+            return FakeResult(None if self.selects == 1 else dict(STORED_ROW))
+
+    conn = RaceConn()
+    original_session = social_service.session
+    social_service.session = fake_session_factory(conn)
+    try:
+        row, created = social_service.persist_social_post(
+            SocialPostIngestPayload(**payload()),
+            insert_row=lambda _conn, _values: (None, False))
+    finally:
+        social_service.session = original_session
+
+    assert created is False
+    assert row["raw_sha256"] == STORED_ROW["raw_sha256"]
+    assert conn.selects == 2
+
+
+def test_store_returns_inserted_flag_and_never_updates_duplicate():
+    class InsertConn:
+        def execute(self, query, params):
+            assert query.startswith("INSERT INTO social_posts")
+            assert "ON CONFLICT (raw_sha256) DO NOTHING" in query
+            assert "DO UPDATE" not in query
+            assert query.count("%s") == len(params) == 15
+            return FakeResult(dict(STORED_ROW))
+
+    values = {
+        "platform": "xiaohongshu", "post_id": None,
+        "source_url": payload()["source_url"], "title": "标题",
+        "content": NINGBO_POST, "author_name": None, "publish_time": None,
+        "media_urls": [], "tags": [], "raw_html_snippet": None,
+        "raw_sha256": "a" * 64, "is_ningbo_related": True,
+        "matched_keywords": ["宁波"], "extracted_hints": {}, "status": "new",
+    }
+
+    row, inserted = insert_social_post_row(InsertConn(), values)
+
+    assert row["id"] == STORED_ROW["id"]
+    assert inserted is True
 
 
 # ---------- 端到端模拟：真实 API 层（持久化 mock） ----------
@@ -196,6 +246,13 @@ def test_api_rejects_content_without_ningbo_keywords(monkeypatch):
         json=payload(content=SHANGHAI_POST, title="上海新房", tags=["上海"]))
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "not_ningbo_related"
+
+
+def test_api_rejects_unrecognized_payload_fields(monkeypatch):
+    monkeypatch.setattr(social_ingest, "APP_API_KEY", "")
+    response = client_loopback().post(
+        "/api/v1/ingest/social", json=payload(unexpected="ignored data"))
+    assert response.status_code == 422
 
 
 def test_api_duplicate_returns_existing_without_insert(monkeypatch):

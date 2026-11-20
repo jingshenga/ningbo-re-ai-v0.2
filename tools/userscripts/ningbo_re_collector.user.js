@@ -35,8 +35,30 @@
   var KEY_TOKEN = "nbre_api_token";
   var KEY_PANEL_OPEN = "nbre_panel_open";
 
+  function isPrivateHost(host) {
+    host = host.toLowerCase().replace(/^\[|\]$/g, "");
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+    if (host === "::1" || /^f[cd][0-9a-f:]*$/i.test(host) || /^fe[89ab][0-9a-f:]*$/i.test(host)) return true;
+    var parts = host.split(".");
+    if (parts.length !== 4 || !parts.every(function (part) { return /^\d{1,3}$/.test(part) && Number(part) <= 255; })) return false;
+    var a = Number(parts[0]), b = Number(parts[1]);
+    return a === 10 || a === 127 || a === 192 && b === 168 || a === 172 && b >= 16 && b <= 31;
+  }
+
+  function normalizeApiBase(value) {
+    try {
+      var parsed = new URL(value);
+      if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+          parsed.username || parsed.password || !["", "/"].includes(parsed.pathname) ||
+          parsed.search || parsed.hash || !isPrivateHost(parsed.hostname)) return "";
+      return parsed.origin;
+    } catch (err) {
+      return "";
+    }
+  }
+
   function getApiBase() {
-    return (GM_getValue(KEY_API_BASE, DEFAULT_API_BASE) || DEFAULT_API_BASE).replace(/\/+$/, "");
+    return normalizeApiBase(GM_getValue(KEY_API_BASE, DEFAULT_API_BASE) || DEFAULT_API_BASE) || DEFAULT_API_BASE;
   }
   function getToken() { return GM_getValue(KEY_TOKEN, "") || ""; }
 
@@ -277,7 +299,12 @@
     var saveButton = el("button", null, "保存设置");
     saveButton.style.cssText = "margin-top:8px;padding:6px 12px;border:0;border-radius:8px;background:#C48A36;color:#14263A;cursor:pointer;";
     saveButton.addEventListener("click", function () {
-      GM_setValue(KEY_API_BASE, apiField.value.trim() || DEFAULT_API_BASE);
+      var apiBase = normalizeApiBase(apiField.value.trim() || DEFAULT_API_BASE);
+      if (!apiBase) {
+        showStatus("后端地址仅支持本机或内网 HTTP(S) 地址，且不能带账号、路径或查询参数。", true);
+        return;
+      }
+      GM_setValue(KEY_API_BASE, apiBase);
       GM_setValue(KEY_TOKEN, tokenField.value.trim());
       showStatus("设置已保存", false);
     });

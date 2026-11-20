@@ -128,6 +128,12 @@ HTML正文上限为1,000,000 UTF-8字节；请求JSON正文最大6,100,000字节
 
 成功结果中 `hints.confidence_status` 固定为 `not_calibrated`；口播/字幕价格只是待核实线索，禁止写入正式挂牌、成交价或 `price_history`。工作台服务端可在同一API容器中用 `MEDIA_UPLOAD_API_BASE=http://127.0.0.1:8000` 调用接口；其浏览器侧保持现有签名会话与CSRF边界。
 
+## 社交线索人工采集
+
+`POST /api/v1/ingest/social` 接收操作者在浏览器中**主动点击采集的单条帖子**。请求需 JSON 字段 `platform`（`xiaohongshu`、`douyin`、`channels`、`other`）、HTTPS `source_url` 和非空 `content`；`post_id`、`title`、`author_name`、`publish_time`、`media_urls`、`tags`、`raw_html_snippet` 可选。平台型来源的 URL 主机必须属于对应平台；`other` 仅要求 HTTPS。正文、媒体链接和标签均有长度/数量上限，且服务器须在标题、正文或标签中识别宁波地域关键词，否则返回 `422 not_ningbo_related`。
+
+配置 `APP_API_KEY` 后必须提供匹配的 `X-API-Key`；未配置时仅允许回环地址调用。成功响应为 `stored` 或 `duplicate`，包含记录 ID、规范化去重 SHA-256、地域命中词和标记为 `not_calibrated` 的线索。去重键由平台、来源 URL（去片段及尾部斜杠）和规范化正文构成；相同哈希不会新建或覆盖已有记录。该接口只写入 `social_posts` 线索表，不写正式挂牌、成交价或价格历史。数据库初始化会加载 `sql/015_social_posts.sql`；已有数据库必须按备份与迁移流程单独应用该迁移。
+
 ## 重要限制
 - 通用HTML解析器尚未在真实贝壳/安居客宁波页面做字段准确率验收。
 - 条件单兼容旧字段 `district`、`community_name`；新字段 `districts` 是硬性区域范围，`preferred_communities` 只作为提醒偏好标记，`excluded_communities` 为硬性排除，`max_listing_age_days` 按挂牌最近观察时间过滤。

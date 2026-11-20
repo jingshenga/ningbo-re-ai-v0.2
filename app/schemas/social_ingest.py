@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 PLATFORM_DOMAINS = {
     "xiaohongshu": ("xiaohongshu.com", "xhscin.com"),
@@ -32,6 +32,8 @@ class SocialPlatformEnum(str, Enum):
 
 class SocialPostIngestPayload(BaseModel):
     """One operator-collected social post. Human-initiated, single-item capture."""
+
+    model_config = ConfigDict(extra="forbid")
 
     platform: SocialPlatformEnum
     source_url: HttpUrl

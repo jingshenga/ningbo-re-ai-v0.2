@@ -97,8 +97,9 @@ def persist_social_post(payload: SocialPostIngestPayload,
                         insert_row=None) -> tuple[dict, bool]:
     """Duplicate-check then insert the clue; idempotent on raw_sha256.
 
-    Returns (row, created). `insert_row(conn, values)` may be injected for
-    tests; by default it resolves to app.social_store.insert_social_post_row.
+    Returns (row, created). `insert_row(conn, values)` follows the same
+    (row, inserted) contract; by default it resolves to
+    app.social_store.insert_social_post_row.
     """
     if insert_row is None:
         if insert_social_post_row is None:
@@ -118,13 +119,13 @@ def persist_social_post(payload: SocialPostIngestPayload,
             'SELECT * FROM social_posts WHERE raw_sha256=%s', (sha256,)).fetchone()
         if existing:
             return existing, False
-        row = insert_row(conn, values)
+        row, created = insert_row(conn, values)
         if row is None:
             # Concurrent duplicate won the race; return the stored row honestly.
             existing = conn.execute(
                 'SELECT * FROM social_posts WHERE raw_sha256=%s', (sha256,)).fetchone()
             return existing, False
-        return row, True
+        return row, bool(created)
 
 
 def row_to_response_fields(row: dict, created: bool) -> dict:

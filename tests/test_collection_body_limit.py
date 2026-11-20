@@ -31,3 +31,12 @@ def test_saved_html_route_replays_bounded_body_to_fastapi_validation(monkeypatch
                                headers={'X-API-Key': test_api_key})
 
     assert response.status_code == 422
+
+
+def test_social_ingest_route_rejects_oversized_body(monkeypatch):
+    monkeypatch.setattr('app.body_limits.MAX_SOCIAL_INGEST_BODY_BYTES', 5)
+    with TestClient(app) as client:
+        response = client.post('/api/v1/ingest/social', content=b'123456')
+
+    assert response.status_code == 413
+    assert response.json() == {'detail': 'request body too large'}
